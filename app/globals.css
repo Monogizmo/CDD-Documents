@@ -1,0 +1,19 @@
+:root{--bg:#f5f4f0;--card:#fff;--ink:#26262b;--mute:#6b6b73;--line:#deddd6;--accent:#ffc72c;--ok:#17744a;--okbg:#e3f3ea;--warn:#9a5b00;--warnbg:#fff1d6;--bad:#b3261e;color-scheme:light}
+@media(prefers-color-scheme:dark){:root{--bg:#1c1c20;--card:#26262b;--ink:#f1f0ec;--mute:#a3a3ab;--line:#3b3b42;--okbg:#17372a;--ok:#6fd3a2;--warnbg:#3d2f10;--warn:#ffc972;--bad:#ff8a80;color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 15px/1.55 "Noto Sans Thai","Sarabun",system-ui,sans-serif}
+.wrap{max-width:760px;margin:0 auto;padding:16px 16px 64px}
+header{border-bottom:3px solid var(--accent);padding:8px 0 14px;margin-bottom:14px}
+h1{font-size:21px;margin:0 0 2px}.sub,.mute{color:var(--mute);font-size:13px}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:12px}
+label.f{display:block;font-size:13px;color:var(--mute);margin-top:8px}
+input[type=text],select{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);font:inherit;margin-top:3px}
+.btn{padding:8px 14px;border-radius:8px;border:1px solid var(--ink);background:var(--card);color:var(--ink);font:600 13px inherit;cursor:pointer}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:#26262b}
+.err{color:var(--bad);font-size:13px;margin-top:6px}
+.tag{font-size:12px;padding:2px 8px;border-radius:99px;background:var(--warnbg);color:var(--warn);margin-left:4px;white-space:nowrap}.tag.ok{background:var(--okbg);color:var(--ok)}.tag.bad{background:none;border:1px solid var(--bad);color:var(--bad)}
+.row{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;cursor:pointer}
+.files{list-style:none;margin:10px 0 0;padding:0}
+.files li{padding:8px 0;border-top:1px dashed var(--line);font-size:13px;word-break:break-word}
+.ctl{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px}.ctl select{width:auto;max-width:190px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}@media(max-width:560px){.grid3{grid-template-columns:1fr}}
