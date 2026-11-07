@@ -4,6 +4,7 @@ import JSZip from 'jszip'
 import { supabase } from '../../lib/supabase'
 import { CATS, nm, base, reqd, okCat, fname } from '../../lib/categories'
 import OtpLogin from '../../components/OtpLogin'
+import CodeLogin from '../../components/CodeLogin'
 
 const ST = { wait: 'รอตรวจ', ok: 'ผ่านแล้ว', fix: 'ต้องแก้ไข' }
 const BUCKET = 'candidate-docs'
@@ -37,7 +38,7 @@ export default function Staff() {
   useEffect(() => { if (ses) load() }, [ses, load])
 
   if (ses === undefined) return null
-  if (!ses) return <Shell><OtpLogin title="สำหรับเจ้าหน้าที่ HR" /></Shell>
+  if (!ses) return <Shell><OtpLogin title="สำหรับเจ้าหน้าที่ HR" /><CodeLogin /></Shell>
   if (role === null) return <Shell>กำลังโหลด...</Shell>
   if (role !== 'admin' && role !== 'recruiter')
     return <Shell><p>อีเมลนี้ยังไม่มีสิทธิ์ใช้งานหน้านี้</p><button className="btn" onClick={() => supabase.auth.signOut()}>ออกจากระบบ</button></Shell>

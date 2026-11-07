@@ -17,3 +17,6 @@ input[type=text],select{width:100%;padding:9px 10px;border:1px solid var(--line)
 .files li{padding:8px 0;border-top:1px dashed var(--line);font-size:13px;word-break:break-word}
 .ctl{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px}.ctl select{width:auto;max-width:190px}
 .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}@media(max-width:560px){.grid3{grid-template-columns:1fr}}
+.bar{height:8px;background:var(--line);border-radius:99px;overflow:hidden;margin-bottom:6px}.bar i{display:block;height:100%;background:var(--accent)}
+.cat{border-left:4px solid var(--line)}.cat.done{border-left-color:var(--ok)}
+.hint{font-size:13px;color:var(--mute);margin-top:2px}
