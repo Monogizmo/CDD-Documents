@@ -1,17 +1,20 @@
 'use client'
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
-import { req, reqd, okCat, fname, nm, lbl, fdt } from '../lib/categories'
-import { loadImg, toJpg, mkPdf, photoBlob, isLocked } from '../lib/images'
+import { req, reqd, okCat, fname, nm, lbl, fdt, C } from '../lib/categories'
+import { loadImg, toJpg, mkPdf } from '../lib/images'
+import { BUCKET, extOf, genericJobs, storeJobs } from '../lib/upload'
 import { pdfPages } from '../lib/pdf'
 import OtpLogin from '../components/OtpLogin'
 import Redact from '../components/Redact'
 import Summary from '../components/Summary'
 import Stepper from '../components/Stepper'
+import BulkUpload from '../components/BulkUpload'
+import Avatar from '../components/Avatar'
+import { usePhotoUrls } from '../lib/photos'
 
 const ST = { wait: 'รอตรวจ', ok: 'ผ่านแล้ว', fix: 'ต้องแก้ไข' }
 const cls = (s) => (s === 'ok' ? 'ok' : s === 'fix' ? 'bad' : '')
-const BUCKET = 'candidate-docs'
 const Shell = ({ children, right }) => (
   <>
     <div className="topbar"><div className="topin">
@@ -33,6 +36,7 @@ export default function Home() {
   const [ov, setOv] = useState(null)
   const [tab, setTab] = useState('up')
   const uid = ses?.user?.id
+  const photos = usePhotoUrls(docs)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSes(data.session))
@@ -103,7 +107,6 @@ export default function Home() {
   }
 
   const redact = (pages) => new Promise((res) => setOv({ pages, res }))
-  const extOf = (f) => { const e = f.name.split('.').pop().toLowerCase(); return e === 'jpeg' ? 'jpg' : e }
 
   // ID card: the ONLY path is the redaction tool; the original file is never uploaded
   async function idJobs(files, bad, jobs) {
@@ -126,45 +129,33 @@ export default function Home() {
     const boxes = rects.reduce((a, r) => a + r.length, 0)
     jobs.push(x === 'pdf' ? { blob: await mkPdf(blobs), ext: 'pdf', name: f.name, boxes } : { blob: blobs[0], ext: 'jpg', name: f.name, boxes })
   }
-  async function genericJobs(k, files, bad, jobs) {
-    const key = k[0], imgs = []
-    for (const f of files) {
-      const x = extOf(f)
-      if (f.size > 10485760) { bad.push(f.name + ' ใหญ่เกิน 10 MB'); continue }
-      if (x === 'pdf') {
-        if (!k[4].includes('pdf')) { bad.push(f.name + ' หมวดนี้รับเฉพาะรูป JPG หรือ PNG'); continue }
-        if (await isLocked(f)) { bad.push(f.name + ' มีรหัสผ่าน กรุณาปลดล็อกก่อนอัปโหลด'); continue }
-        jobs.push({ blob: f, ext: 'pdf', name: f.name })
-      } else if (x === 'jpg' || x === 'png') imgs.push(f)
-      else bad.push(f.name + ' ไม่รองรับ (รับ PDF, JPG, PNG)')
-    }
-    if (imgs.length && key === 'PH') {
-      const r = await photoBlob(await loadImg(imgs[0]))
-      jobs.push({ blob: r.blob, ext: 'jpg', name: imgs[0].name }); bad.push(...r.warn)
-      if (imgs.length > 1) bad.push('รูปถ่ายใช้ 1 รูป ระบบใช้รูปแรกให้')
-    } else if (imgs.length && k[4].includes('jpg')) {
-      for (const f of imgs) jobs.push({ blob: await toJpg(await loadImg(f)), ext: 'jpg', name: f.name })
-    } else if (imgs.length) {
-      const pg = []
-      for (const f of imgs) pg.push(await toJpg(await loadImg(f)))
-      jobs.push({ blob: await mkPdf(pg), ext: 'pdf', name: 'photos.pdf' })
-    }
-  }
-  async function up(k, files) {
+  // keep = true when called from the bulk upload so earlier messages are not wiped
+  async function up(k, files, keep) {
     const key = k[0], bad = [], jobs = []
-    setErr({}); setBusy(key)
+    if (!keep) setErr({})
+    setBusy(key)
     try { if (key === '2.1') await idJobs(files, bad, jobs); else await genericJobs(k, files, bad, jobs) }
     catch { bad.push('ประมวลผลไฟล์ไม่ได้ ลองใหม่หรือใช้ไฟล์อื่น') }
-    for (const j of jobs) {
-      const path = `${c.id}/${key}/${crypto.randomUUID()}.${j.ext}`
-      const u = await supabase.storage.from(BUCKET).upload(path, j.blob, { contentType: j.ext === 'pdf' ? 'application/pdf' : 'image/jpeg' })
-      if (u.error) { bad.push(j.name + ': ' + u.error.message); continue }
-      const row = { candidate_id: c.id, category: key, storage_path: path, original_name: j.name, ext: j.ext, size_kb: Math.max(1, Math.round(j.blob.size / 1024)), status: 'wait', note: '' }
-      if (j.boxes) { row.redaction = 'tool'; row.redaction_boxes = j.boxes }
-      const r = await supabase.from('documents').insert(row)
-      if (r.error) { await supabase.storage.from(BUCKET).remove([path]); bad.push(j.name + ': ' + r.error.message) }
+    await storeJobs(c.id, key, jobs, bad)
+    setBusy(''); if (bad.length) setErr((e) => ({ ...e, [key]: bad.join(' · ') })); load(uid)
+  }
+  // bulk: files already sorted into categories by the review step
+  async function bulk(list) {
+    setErr({}); setBusy('bulk')
+    const by = {}
+    list.forEach((x) => { (by[x.code] = by[x.code] || []).push(x.file) })
+    for (const code of Object.keys(by)) {
+      // the ID card tool handles one file at a time
+      if (code === '2.1') for (const f of by[code]) await up(C[code], [f], true)
+      else await up(C[code], by[code], true)
     }
-    setBusy(''); if (bad.length) setErr({ [key]: bad.join(' · ') }); load(uid)
+    setBusy('')
+  }
+  async function setTitle(d, v) {
+    v = v.trim()
+    if (v === (d.title || '')) return
+    const { error } = await supabase.from('documents').update({ title: v }).eq('id', d.id)
+    if (error) setErr((e) => ({ ...e, OT: error.message })); else load(uid)
   }
   async function rm(d) {
     if (!confirm('ลบไฟล์นี้?')) return
@@ -185,7 +176,8 @@ export default function Home() {
       <div className="panel">
         {!pf ? (
           <div className="row" style={{ cursor: 'default' }}>
-            <div><b>{c.first_name} {c.last_name}</b><div className="hint">{c.position} · SRF {c.srf_no} · {c.is_male ? 'เพศชาย' : 'ไม่ใช่เพศชาย'}{c.name_changed ? ' · เคยเปลี่ยนชื่อ/นามสกุล' : ''}</div></div>
+            <Avatar url={photos[c.id]} name={c.first_name + ' ' + c.last_name} size={64} portrait />
+            <div style={{ flex: 1 }}><b>{c.first_name} {c.last_name}</b><div className="hint">{c.position} · SRF {c.srf_no} · {c.is_male ? 'เพศชาย' : 'ไม่ใช่เพศชาย'}{c.name_changed ? ' · เคยเปลี่ยนชื่อ/นามสกุล' : ''}</div></div>
             <button className="btn sm" onClick={() => setPf({ fn: c.first_name, ln: c.last_name, male: c.is_male, nc: c.name_changed })}>แก้ไขข้อมูลของฉัน</button>
           </div>
         ) : (
@@ -205,7 +197,8 @@ export default function Home() {
         <button className={'btn' + (tab === 'up' ? ' pri' : '')} onClick={() => setTab('up')}>อัปโหลดเอกสาร</button>
         <button className={'btn' + (tab === 'sum' ? ' pri' : '')} onClick={() => setTab('sum')}>สรุปเอกสาร / สถานะ</button>
       </div>
-      {tab === 'sum' ? <Summary c={c} docs={docs} /> : req(c).map((k) => {
+      {tab !== 'sum' && <BulkUpload cats={req(c)} existing={Object.fromEntries(req(c).map((k) => [k[0], docs.filter((d) => d.category === k[0]).length]))} onConfirm={bulk} busy={!!busy} />}
+      {tab === 'sum' ? <Summary c={c} docs={docs} photo={photos[c.id]} /> : req(c).map((k) => {
         const l = docs.filter((d) => d.category === k[0]), ok = okCat(docs, c, k)
         return (
           <section className={'panel cat' + (ok ? ' done' : '')} key={k[0]}>
@@ -218,6 +211,11 @@ export default function Home() {
                 <li key={d.id}>
                   <div className="fl"><span>{fname(c, d, docs)}</span><span className={'tag ' + cls(d.status)}>{ST[d.status]}</span></div>
                   <div className="hint">อัปเดต {fdt(d.updated_at || d.created_at)}{d.redaction ? ` · ปิดบังข้อมูลแล้ว ${d.redaction_boxes || ''} จุด` : ''}</div>
+                  {d.category === 'OT' && d.status !== 'ok' && (
+                    <label className="f">ไฟล์นี้เกี่ยวกับอะไร (จะใช้เป็นชื่อไฟล์) {!d.title && <span className="tag">ยังไม่ได้ตั้งชื่อ</span>}
+                      <input type="text" defaultValue={d.title} placeholder="เช่น สรุปสำนวนคดี" maxLength={80} onBlur={(e) => setTitle(d, e.target.value)} />
+                    </label>
+                  )}
                   {d.status === 'fix' && <div className="err">เหตุผล: {d.note || 'กรุณาอัปโหลดไฟล์ใหม่'} · ลบไฟล์นี้แล้วอัปโหลดใหม่</div>}
                   {d.status !== 'ok' && <div className="ctl"><button className="btn sm" onClick={() => rm(d)}>ลบ</button></div>}
                 </li>

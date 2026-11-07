@@ -1,8 +1,9 @@
 'use client'
 import { req, reqd, okCat, nm, base, lbl, fdt } from '../lib/categories'
+import Avatar from './Avatar'
 
 // Formal summary: what has been received, status, reason and last update (printable)
-export default function Summary({ c, docs }) {
+export default function Summary({ c, docs, photo }) {
   const my = docs.filter((d) => d.candidate_id === c.id)
   const miss = reqd(c).filter((k) => !okCat(my, c, k))
   const state = (k) => {
@@ -13,8 +14,13 @@ export default function Summary({ c, docs }) {
   }
   return (
     <section className="panel summary">
-      <b style={{ fontSize: 17 }}>สรุปเอกสารผู้สมัคร</b>
-      <div className="hint">{base(c)} · ตำแหน่ง {c.position} · SRF {c.srf_no} · ณ วันที่ {new Date().toLocaleDateString('th-TH', { dateStyle: 'long' })}</div>
+      <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
+        <Avatar url={photo} name={c.first_name ? base(c) : ''} size={64} portrait />
+        <div>
+          <b style={{ fontSize: 17 }}>สรุปเอกสารผู้สมัคร</b>
+          <div className="hint">{base(c)} · ตำแหน่ง {c.position} · SRF {c.srf_no} · ณ วันที่ {new Date().toLocaleDateString('th-TH', { dateStyle: 'long' })}</div>
+        </div>
+      </div>
       {miss.length > 0
         ? <div className="err" style={{ marginTop: 8 }}><b>ยังขาดเอกสารบังคับ {miss.length} รายการ:</b> {miss.map(lbl).join(' · ')}</div>
         : <div style={{ marginTop: 8 }}><span className="tag ok">ส่งเอกสารบังคับครบแล้ว</span></div>}

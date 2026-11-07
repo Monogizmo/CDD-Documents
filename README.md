@@ -27,3 +27,18 @@ supabase/migrations/001_init.sql
 - Files live in the private bucket `candidate-docs` at `<candidate_id>/<category>/<uuid>.<ext>`; the browser uploads directly to Storage (Vercel functions have a small request-size limit).
 - Candidates see only their own rows and files. Recruiters see all. Hiring is read-only and sees only candidates marked offer_made.
 - Real candidate data = personal data (PDPA). Inform IT/the data owner before using real candidates.
+
+## Recruiter checklist + bulk upload (migration 006)
+- Run `supabase/migrations/006_recruiter_docs.sql` once, after 001-005.
+- Recruiter categories live in `RCATS` (lib/categories.js); change the number prefixes (1-1., 1-5. ...) there.
+- AOU / Rehire status is stored in `candidate_checks` (recruiter + hiring only, candidates cannot read it).
+- Bulk upload guesses the category from the file name (lib/classify.js, edit the keyword rules there) and always shows a review step.
+
+## Other Documents title (migration 007)
+Run `007_other_doc_title.sql` after 006. The title typed after upload becomes the file name (`<title> - Name Surname.pdf`). Candidates can edit it only on their own Other Documents that are not yet approved.
+
+## Theme + Dashboard
+- Brand colors are CSS variables at the top of `app/globals.css` (`--pri` yellow, `--brown`, ...). Change them there.
+- Staff page has a left menu: Dashboard (KPIs, pipeline funnel, positions donut, candidate profile cards, kanban, monthly trend) and Candidates (the original list).
+- The pipeline stage is derived from documents (`lib/stage.js`), nothing new to store.
+- The candidate's Photo (category PH) is shown on the SRF card, list rows, dashboard and the printable summary via batched signed URLs (`lib/photos.js`). No migration needed for this part.
