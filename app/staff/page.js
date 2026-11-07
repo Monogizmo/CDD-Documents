@@ -2,7 +2,8 @@
 import { useEffect, useState, useCallback } from 'react'
 import JSZip from 'jszip'
 import { supabase } from '../../lib/supabase'
-import { CATS, nm, base, reqd, okCat, fname } from '../../lib/categories'
+import { CATS, nm, base, reqd, okCat, fname, lbl } from '../../lib/categories'
+import Summary from '../../components/Summary'
 import OtpLogin from '../../components/OtpLogin'
 import CodeLogin from '../../components/CodeLogin'
 
@@ -96,6 +97,7 @@ export default function Staff() {
       {cands.map((c) => {
         const my = docs.filter((d) => d.candidate_id === c.id)
         const r = reqd(c), n = r.filter((k) => okCat(my, c, k)).length
+        const miss = r.filter((k) => !okCat(my, c, k))
         const w = my.filter((d) => d.status === 'wait').length, x = my.filter((d) => d.status === 'fix').length
         const open = sel === c.id
         return (
@@ -105,8 +107,10 @@ export default function Staff() {
               <span><span className={'tag' + (n === r.length ? ' ok' : '')}>ส่งแล้ว {n}/{r.length}</span>
                 {w > 0 && <span className="tag">รอตรวจ {w}</span>}{x > 0 && <span className="tag bad">แก้ไข {x}</span>}</span>
             </div>
+            {miss.length > 0 && <div className="err">ยังขาด (บังคับ): {miss.map(lbl).join(' · ')}</div>}
             {open && (
               <>
+                <Summary c={c} docs={docs} />
                 <ul className="files">
                   {!my.length && <li>ยังไม่มีไฟล์</li>}
                   {my.map((d) => (

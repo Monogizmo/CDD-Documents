@@ -1,7 +1,8 @@
 'use client'
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
-import { req, reqd, okCat, fname } from '../lib/categories'
+import { req, reqd, okCat, fname, nm, lbl } from '../lib/categories'
+import Summary from '../components/Summary'
 import OtpLogin from '../components/OtpLogin'
 import Redact from '../components/Redact'
 import { loadImg, toJpg, mkPdf, photoBlob, isLocked } from '../lib/images'
@@ -23,6 +24,7 @@ export default function Home() {
   const [err, setErr] = useState({})
   const [busy, setBusy] = useState('')
   const [ov, setOv] = useState(null)
+  const [tab, setTab] = useState('up')
   const uid = ses?.user?.id
 
   useEffect(() => {
@@ -98,7 +100,7 @@ export default function Home() {
         const im = await loadImg(imgs[0]), rects = await redact(im)
         if (rects) jobs.push({ blob: await toJpg(im, rects), ext: 'jpg', name: imgs[0].name, red: true })
         if (imgs.length > 1) bad.push('บัตรประชาชนปิดบังได้ครั้งละ 1 รูป เลือกรูปที่เหลือมาปิดบังใหม่')
-      } else if (imgs.length && key === '2.9') {
+      } else if (imgs.length && key === 'PH') {
         const r = await photoBlob(await loadImg(imgs[0]))
         jobs.push({ blob: r.blob, ext: 'jpg', name: imgs[0].name }); bad.push(...r.warn)
         if (imgs.length > 1) bad.push('รูปถ่ายใช้ 1 รูป ระบบใช้รูปแรกให้')
@@ -128,21 +130,27 @@ export default function Home() {
   async function setRed(v) { await supabase.from('candidates').update({ id_redacted: v }).eq('id', c.id); load(uid) }
 
   const r = reqd(c), n = r.filter((k) => okCat(docs, c, k)).length
+  const miss = r.filter((k) => !okCat(docs, c, k))
   return (
     <Shell>
       <div className="panel">
         <div className="bar"><i style={{ width: (r.length ? (n / r.length) * 100 : 0) + '%' }} /></div>
         <div className="sub">ส่งแล้ว {n} จาก {r.length} หมวดที่จำเป็น · ทยอยอัปโหลดได้ ไฟล์ที่ส่งแล้วถูกบันทึกไว้</div>
         <div className="hint">{c.position} · SRF {c.srf_no}</div>
+        {miss.length > 0 && <div className="err">ยังขาดเอกสารบังคับ: {miss.map(lbl).join(' · ')}</div>}
       </div>
-      {req(c).map((k) => {
+      <div className="ctl" style={{ marginBottom: 12 }}>
+        <button className={'btn' + (tab === 'up' ? ' pri' : '')} onClick={() => setTab('up')}>อัปโหลดเอกสาร</button>
+        <button className={'btn' + (tab === 'sum' ? ' pri' : '')} onClick={() => setTab('sum')}>สรุปเอกสาร</button>
+      </div>
+      {tab === 'sum' ? <Summary c={c} docs={docs} /> : req(c).map((k) => {
         const l = docs.filter((d) => d.category === k[0]), ok = okCat(docs, c, k)
         return (
           <section className={'panel cat' + (ok ? ' done' : '')} key={k[0]}>
-            <b>{/^\d/.test(k[0]) ? k[0] + ' ' : ''}{k[1]}</b> <span className="sub">({k[2]})</span>
+            <b>{nm(k[0])}{k[1]}</b> <span className="sub">({k[2]})</span>
             {k[5] && <span className="tag">ไม่บังคับ</span>}
             {k[3] && <div className="hint">{k[3]}</div>}
-            {k[0] === '2.9' && <div className="hint">ขนาด 700×900 px · JPG · 300 KB–2 MB · พื้นหลังสีขาวหรือเทาอ่อน · <a href="/photo-spec.jpg" target="_blank" rel="noreferrer">ดูข้อกำหนดรูปถ่ายพนักงาน</a></div>}
+            {k[0] === 'PH' && <div className="hint">ขนาด 700×900 px · JPG · 300 KB–2 MB · พื้นหลังสีขาวหรือเทาอ่อน · <a href="/photo-spec.jpg" target="_blank" rel="noreferrer">ดูข้อกำหนดรูปถ่ายพนักงาน</a></div>}
             {k[0] === '2.1' && <label className="f" style={{ color: 'var(--ink)' }}><input type="checkbox" checked={!!c.id_redacted} onChange={(e) => setRed(e.target.checked)} /> ฉันลบศาสนาและกรุ๊ปเลือดออกจากไฟล์แล้ว</label>}
             <ul className="files">
               {l.map((d) => (
@@ -154,7 +162,7 @@ export default function Home() {
               ))}
             </ul>
             <div style={{ marginTop: 8 }}>
-              <input type="file" multiple={k[0] !== '2.9'} disabled={busy === k[0]}
+              <input type="file" multiple={k[0] !== 'PH'} disabled={busy === k[0]}
                 accept={(k[4].includes('pdf') ? '.pdf,' : '') + '.jpg,.jpeg,.png'}
                 onChange={(e) => { up(k, [...e.target.files]); e.target.value = '' }} />
               <div className="hint">รับไฟล์ {k[4].includes('pdf') ? 'PDF, JPG, PNG' : 'JPG, PNG'} ไม่เกิน 10 MB{k[0] === '2.1' ? ' · รูปจะเปิดเครื่องมือปิดบังข้อมูลให้' : k[4].includes('pdf') && !k[4].includes('jpg') ? ' · รูปที่เลือกพร้อมกันจะรวมเป็น PDF ให้' : ''}{busy === k[0] ? ' · กำลังอัปโหลด...' : ''}</div>
