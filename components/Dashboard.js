@@ -12,7 +12,7 @@ export default function Dashboard({ rows, photos, onOpen, onZip, now = new Date(
   const total = rows.length
   const sent = rows.reduce((a, r) => a + (r.n - r.miss.length), 0), need = rows.reduce((a, r) => a + r.n, 0)
   const pct = need ? Math.round((sent / need) * 100) : 0
-  const ready = rows.filter((r) => r.stage === 'complete' || r.stage === 'onboard').length
+  const ready = rows.filter((r) => r.stage === 'complete').length
   const waiting = rows.reduce((a, r) => a + r.w, 0), fix = rows.reduce((a, r) => a + r.x, 0)
 
   // new candidates per week (last 8 weeks) and per month (last 12 months)
@@ -22,7 +22,7 @@ export default function Dashboard({ rows, photos, onOpen, onZip, now = new Date(
   const months = Array.from({ length: 12 }, (_, i) => { const d = new Date(now.getFullYear(), now.getMonth() - 11 + i, 1); return { y: d.getFullYear(), m: d.getMonth() } })
   const inM = (iso, mo) => { if (!iso) return false; const d = new Date(iso); return d.getFullYear() === mo.y && d.getMonth() === mo.m }
   const newM = months.map((mo) => rows.filter((r) => inM(r.c.created_at, mo)).length)
-  const doneM = months.map((mo) => rows.filter((r) => inM(r.c.ready_at || r.c.signed_at, mo)).length)
+  const doneM = months.map((mo) => rows.reduce((a, r) => a + r.m.filter((d) => inM(d.created_at, mo)).length, 0))
 
   // positions donut
   const pos = {}
@@ -94,9 +94,9 @@ export default function Dashboard({ rows, photos, onOpen, onZip, now = new Date(
                   </div>
                 </div>
                 <div className="chips">
-                  <span className={'tag ' + (r.x ? 'bad' : r.stage === 'complete' || r.stage === 'onboard' ? 'ok' : 'n')}>{r.x ? `แก้ไข ${r.x} ไฟล์` : STAGE_NAME[r.stage]}</span>{chips(r.c, r.m).map((x) => <span key={x.code} className={'chip ' + x.st}>{x.t}</span>)}</div>
+                  <span className={'tag ' + (r.x ? 'bad' : r.stage === 'complete' ? 'ok' : 'n')}>{r.x ? `แก้ไข ${r.x} ไฟล์` : STAGE_NAME[r.stage]}</span>{chips(r.c, r.m).map((x) => <span key={x.code} className={'chip ' + x.st}>{x.t}</span>)}</div>
                 <div className="acts">
-                  <button type="button" onClick={() => onOpen(r.c)}>ตรวจเอกสาร</button>
+                  <button type="button" onClick={() => onOpen(r.c)}>Review Center</button>
                   <a href={'mailto:' + r.c.email}>อีเมล</a>
                   <button type="button" onClick={() => onZip(r.c)}>โหลด Zip</button>
                 </div>
@@ -129,8 +129,8 @@ export default function Dashboard({ rows, photos, onOpen, onZip, now = new Date(
 
       <div className="dg">
         <div className="panel s12">
-          <div className="ph">แนวโน้มรายเดือน <span className="sub">· <b style={{ color: 'var(--acc)' }}>●</b> ผู้สมัครใหม่ &nbsp;<b style={{ color: 'var(--brown)' }}>●</b> เซ็นเอกสาร/พร้อมเริ่มงาน &nbsp;· ไฟล์รอตรวจ {waiting} · ต้องแก้ไข {fix}</span></div>
-          <LineChart labels={months.map((x) => MONTHS[x.m])} series={[{ name: 'ผู้สมัครใหม่', data: newM, color: '#e0a100' }, { name: 'เสร็จสิ้น', data: doneM, color: '#5b3a14' }]} />
+          <div className="ph">แนวโน้มรายเดือน <span className="sub">· <b style={{ color: 'var(--acc)' }}>●</b> ผู้สมัครใหม่ &nbsp;<b style={{ color: 'var(--brown)' }}>●</b> ไฟล์ที่อัปโหลด &nbsp;· ไฟล์รอตรวจ {waiting} · ต้องแก้ไข {fix}</span></div>
+          <LineChart labels={months.map((x) => MONTHS[x.m])} series={[{ name: 'ผู้สมัครใหม่', data: newM, color: '#e0a100' }, { name: 'ไฟล์ที่อัปโหลด', data: doneM, color: '#5b3a14' }]} />
         </div>
       </div>
     </>

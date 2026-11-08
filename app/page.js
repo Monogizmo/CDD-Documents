@@ -11,10 +11,11 @@ import Summary from '../components/Summary'
 import Stepper from '../components/Stepper'
 import BulkUpload from '../components/BulkUpload'
 import Avatar from '../components/Avatar'
+import Fold from '../components/Fold'
+import Versions from '../components/Versions'
+import { DS, docStatus, catStatus, chainOf } from '../lib/status'
 import { usePhotoUrls } from '../lib/photos'
 
-const ST = { wait: 'รอตรวจ', ok: 'ผ่านแล้ว', fix: 'ต้องแก้ไข' }
-const cls = (s) => (s === 'ok' ? 'ok' : s === 'fix' ? 'bad' : '')
 const Shell = ({ children, right }) => (
   <>
     <div className="topbar"><div className="topin">
@@ -28,7 +29,9 @@ const Shell = ({ children, right }) => (
 export default function Home() {
   const [ses, setSes] = useState(undefined)
   const [c, setC] = useState(undefined)
-  const [docs, setD] = useState([])
+  const [docs, setD] = useState([])        // active files
+  const [hist, setH] = useState([])        // older revisions
+  const [ev, setEv] = useState([])         // review log visible to the candidate
   const [p, setP] = useState({ fn: '', ln: '', male: false, nc: false, ok: false })
   const [pf, setPf] = useState(null)
   const [err, setErr] = useState({})
@@ -48,10 +51,13 @@ export default function Home() {
     setC(a.data || null)
     if (a.data) {
       const b = await supabase.from('documents').select('*').eq('candidate_id', a.data.id).order('created_at')
-      setD(b.data || [])
+      const all = b.data || []
+      setD(all.filter((d) => !d.superseded_at)); setH(all.filter((d) => d.superseded_at))
+      const e = await supabase.from('document_events').select('*').eq('candidate_id', a.data.id).order('created_at')
+      setEv((e.data || []).filter((x) => x.visible))  // RLS already hides internal notes; double-check here
     }
   }, [])
-  useEffect(() => { setC(undefined); setD([]); if (uid) load(uid) }, [uid, load])
+  useEffect(() => { setC(undefined); setD([]); setH([]); setEv([]); if (uid) load(uid) }, [uid, load])
   // real-time: HR changes a status -> this page refreshes by itself
   useEffect(() => {
     if (!c?.id) return
@@ -157,6 +163,19 @@ export default function Home() {
     const { error } = await supabase.from('documents').update({ title: v }).eq('id', d.id)
     if (error) setErr((e) => ({ ...e, OT: error.message })); else load(uid)
   }
+  // Document revision: the new file replaces the old one, the old one stays in the history
+  async function revise(k, d, files) {
+    const key = k[0], bad = [], jobs = []
+    setErr({}); setBusy(d.id)
+    try { if (key === '2.1') await idJobs(files, bad, jobs); else await genericJobs(k, files.slice(0, 1), bad, jobs) }
+    catch { bad.push('ประมวลผลไฟล์ไม่ได้ ลองใหม่หรือใช้ไฟล์อื่น') }
+    if (jobs.length) await storeJobs(c.id, key, jobs.slice(0, 1), bad, { replaces: d.id, title: d.title || '' })
+    setBusy(''); if (bad.length) setErr((e) => ({ ...e, [key]: bad.join(' · ') })); load(uid)
+  }
+  async function openFile(d) {
+    const { data } = await supabase.storage.from(BUCKET).createSignedUrl(d.storage_path, 60)
+    if (data) window.open(data.signedUrl, '_blank')
+  }
   async function rm(d) {
     if (!confirm('ลบไฟล์นี้?')) return
     await supabase.storage.from(BUCKET).remove([d.storage_path])
@@ -193,6 +212,29 @@ export default function Home() {
           </>
         )}
       </div>
+      <div className="panel guide">
+        <Fold title="วิธีใช้งานและเอกสารที่ต้องเตรียม" defaultOpen={!docs.length}>
+          <ol>
+            <li>เตรียมไฟล์ PDF, JPG หรือ PNG ขนาดไม่เกิน 10 MB ต่อไฟล์ (ถ่ายรูปได้ ระบบรวมเป็น PDF ให้)</li>
+            <li>อัปโหลดทีละหมวดด้านล่าง หรือใช้กล่อง "อัปโหลดหลายไฟล์พร้อมกัน" ระบบจะเดาหมวดให้และให้ตรวจก่อนยืนยัน</li>
+            <li>ทยอยส่งได้ ไม่ต้องส่งครบในครั้งเดียว ไฟล์ที่ส่งแล้วถูกบันทึกไว้</li>
+            <li>ดูสถานะที่แต่ละไฟล์ เมื่อ HR ขอให้แก้ไข ให้อ่านเหตุผล แล้วกด "อัปโหลดฉบับแก้ไข" ไฟล์เก่าจะเก็บไว้ในประวัติ</li>
+          </ol>
+          <div className="leg">
+            {Object.keys(DS).map((k) => <span key={k}><span className={'tag ' + DS[k][2]}>{DS[k][0]}</span> {DS[k][1]}</span>)}
+          </div>
+          <div className="scroll"><table className="tbl">
+            <thead><tr><th>เอกสารที่ต้องเตรียม</th><th>ประเภท</th><th>หมายเหตุ</th></tr></thead>
+            <tbody>{req(c).map((k) => (
+              <tr key={k[0]}>
+                <td>{nm(k[0])}{k[1]}<div className="hint">{k[2]}</div></td>
+                <td>{k[5] ? <span className="tag n">ไม่บังคับ</span> : <span className="tag">บังคับ</span>}</td>
+                <td className="mute">{[k[3], k[0] === '2.2' && 'เพราะคุณเคยเปลี่ยนชื่อหรือนามสกุล', k[0] === '2.5' && 'เพราะเป็นเพศชาย'].filter(Boolean).join(' · ')}</td>
+              </tr>
+            ))}</tbody>
+          </table></div>
+        </Fold>
+      </div>
       <div className="ctl" style={{ marginBottom: 12 }}>
         <button className={'btn' + (tab === 'up' ? ' pri' : '')} onClick={() => setTab('up')}>อัปโหลดเอกสาร</button>
         <button className={'btn' + (tab === 'sum' ? ' pri' : '')} onClick={() => setTab('sum')}>สรุปเอกสาร / สถานะ</button>
@@ -202,22 +244,38 @@ export default function Home() {
         const l = docs.filter((d) => d.category === k[0]), ok = okCat(docs, c, k)
         return (
           <section className={'panel cat' + (ok ? ' done' : '')} key={k[0]}>
-            <b>{nm(k[0])}{k[1]}</b> <span className="sub">({k[2]})</span> {k[5] && <span className="tag n">ไม่บังคับ</span>}
+            <b>{nm(k[0])}{k[1]}</b> <span className="sub">({k[2]})</span> {k[5] && <span className="tag n">ไม่บังคับ</span>} {(!k[5] || l.length > 0) && <span className={'tag ' + DS[catStatus(l)][2]}>{DS[catStatus(l)][0]}</span>}
             {k[3] && <div className="hint">{k[3]}</div>}
             {k[0] === 'PH' && <div className="hint">ขนาด 700×900 px · JPG · 300 KB–2 MB · พื้นหลังสีขาวหรือเทาอ่อน · <a href="/photo-spec.jpg" target="_blank" rel="noreferrer">ดูข้อกำหนดรูปถ่ายพนักงาน</a></div>}
             {k[0] === '2.1' && <div className="hint">อัปโหลดรูปหรือ PDF แล้วระบบจะเปิดเครื่องมือให้ลากแถบดำปิดศาสนาและหมู่โลหิต ไฟล์ต้นฉบับจะไม่ถูกส่งขึ้นระบบ ส่งเฉพาะไฟล์ที่ปิดบังแล้วเท่านั้น</div>}
             <ul className="files">
               {l.map((d) => (
                 <li key={d.id}>
-                  <div className="fl"><span>{fname(c, d, docs)}</span><span className={'tag ' + cls(d.status)}>{ST[d.status]}</span></div>
+                  <div className="fl"><span>{fname(c, d, docs)} {d.rev > 1 && <span className="tag n">v{d.rev}</span>}</span><span className={'tag ' + DS[docStatus(d)][2]}>{DS[docStatus(d)][0]} · {DS[docStatus(d)][1]}</span></div>
                   <div className="hint">อัปเดต {fdt(d.updated_at || d.created_at)}{d.redaction ? ` · ปิดบังข้อมูลแล้ว ${d.redaction_boxes || ''} จุด` : ''}</div>
                   {d.category === 'OT' && d.status !== 'ok' && (
                     <label className="f">ไฟล์นี้เกี่ยวกับอะไร (จะใช้เป็นชื่อไฟล์) {!d.title && <span className="tag">ยังไม่ได้ตั้งชื่อ</span>}
                       <input type="text" defaultValue={d.title} placeholder="เช่น สรุปสำนวนคดี" maxLength={80} onBlur={(e) => setTitle(d, e.target.value)} />
                     </label>
                   )}
-                  {d.status === 'fix' && <div className="err">เหตุผล: {d.note || 'กรุณาอัปโหลดไฟล์ใหม่'} · ลบไฟล์นี้แล้วอัปโหลดใหม่</div>}
-                  {d.status !== 'ok' && <div className="ctl"><button className="btn sm" onClick={() => rm(d)}>ลบ</button></div>}
+                  {d.status === 'fix' && <div className="err">Revision Required · เหตุผล: {d.note || 'กรุณาอัปโหลดไฟล์ใหม่'}</div>}
+                  {d.status === 'ok' && <div className="hint">ตรวจผ่านแล้ว หากต้องการเปลี่ยนไฟล์ กรุณาติดต่อ HR</div>}
+                  {d.status !== 'ok' && (
+                    <div className="ctl">
+                      <label className={'btn sm' + (d.status === 'fix' ? ' pri' : '')} style={{ cursor: 'pointer' }}>{busy === d.id ? 'กำลังประมวลผล...' : 'อัปโหลดฉบับแก้ไข'}
+                        <input type="file" hidden disabled={busy === d.id} accept={(k[4].includes('pdf') ? '.pdf,' : '') + '.jpg,.jpeg,.png'} onChange={(e) => { revise(k, d, [...e.target.files]); e.target.value = '' }} />
+                      </label>
+                      {!d.replaces && <button className="btn sm" onClick={() => rm(d)}>ลบ</button>}
+                    </div>
+                  )}
+                  {(() => {
+                    const chain = chainOf(d, hist), ids = new Set(chain.map((x) => x.id))
+                    return (chain.length > 1 || ev.some((e) => ids.has(e.document_id) && e.action !== 'upload')) && (
+                      <Fold small title="ประวัติไฟล์และการตรวจสอบ" badge={chain.length > 1 ? <span className="tag n" style={{ marginLeft: 8 }}>{chain.length} เวอร์ชัน</span> : null}>
+                        <Versions chain={chain} events={ev} onOpen={(v) => openFile(v)} />
+                      </Fold>
+                    )
+                  })()}
                 </li>
               ))}
             </ul>

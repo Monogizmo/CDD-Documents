@@ -42,3 +42,10 @@ Run `007_other_doc_title.sql` after 006. The title typed after upload becomes th
 - Staff page has a left menu: Dashboard (KPIs, pipeline funnel, positions donut, candidate profile cards, kanban, monthly trend) and Candidates (the original list).
 - The pipeline stage is derived from documents (`lib/stage.js`), nothing new to store.
 - The candidate's Photo (category PH) is shown on the SRF card, list rows, dashboard and the printable summary via batched signed URLs (`lib/photos.js`). No migration needed for this part.
+
+## Revisions, Review Center, HR workspace (migration 008)
+- Run `supabase/migrations/008_revisions_review.sql` after 001-007.
+- Revisions: a candidate's "อัปโหลดฉบับแก้ไข" inserts a new file with `replaces` = old file; the old one gets `superseded_at` (kept as history). Review log = `document_events` (written by DB triggers, append-only).
+- Status words (lib/status.js): Missing / Received (not opened by HR yet) / Pending (opened, no decision) / Verified / Revision Required.
+- HR menu: Dashboard, Candidate List, Document Review (Review Center), Bulk Download, Reports, Add Candidate.
+- The status bar and pipeline now stop at "documents complete" (no contract signing / ready-to-start). Columns signed_at / ready_at stay in the DB but are unused.

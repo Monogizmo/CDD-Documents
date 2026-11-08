@@ -1,17 +1,13 @@
 'use client'
 import { req, reqd, okCat, nm, base, lbl, fdt } from '../lib/categories'
 import Avatar from './Avatar'
+import { DS, catStatus } from '../lib/status'
 
 // Formal summary: what has been received, status, reason and last update (printable)
 export default function Summary({ c, docs, photo }) {
   const my = docs.filter((d) => d.candidate_id === c.id)
   const miss = reqd(c).filter((k) => !okCat(my, c, k))
-  const state = (k) => {
-    const l = my.filter((d) => d.category === k[0])
-    if (!l.length) return ['ยังไม่ได้ส่ง', 'bad']
-    if (l.some((d) => d.status === 'fix')) return ['ต้องแก้ไข ส่งใหม่', 'bad']
-    return l.every((d) => d.status === 'ok') ? ['ตรวจผ่านแล้ว', 'ok'] : ['ได้รับแล้ว (รอตรวจ)', '']
-  }
+  const state = (k) => { const x = catStatus(my.filter((d) => d.category === k[0])); return [DS[x][0] + ' · ' + DS[x][1], DS[x][2]] }
   return (
     <section className="panel summary">
       <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
@@ -35,7 +31,7 @@ export default function Summary({ c, docs, photo }) {
                 <tr key={k[0]}>
                   <td>{nm(k[0])}{k[1]}<div className="hint">{k[2]}</div></td>
                   <td>{k[5] ? 'ไม่บังคับ' : 'บังคับ'}</td>
-                  <td>{k[5] && !l.length ? <span className="mute">ยังไม่มี</span> : <span className={'tag ' + cl}>{t}{l.length > 1 ? ` (${l.length} ไฟล์)` : ''}</span>}
+                  <td>{k[5] && !l.length ? <span className="mute">—</span> : <span className={'tag ' + cl}>{t}{l.length > 1 ? ` (${l.length} ไฟล์)` : ''}</span>}
                     {why && <div className="err">เหตุผล: {why.note || 'กรุณาอัปโหลดไฟล์ใหม่'}</div>}</td>
                   <td className="mute">{fdt(last)}</td>
                 </tr>

@@ -67,3 +67,24 @@ input[type=text]:focus,select:focus{outline:2px solid var(--pri);outline-offset:
 .kcard b{font-size:12px;display:block;line-height:1.25;overflow-wrap:break-word}.kcard .sub{font-size:11px}
 .sel{background:var(--pri);color:var(--onpri)}
 @media print{body *{visibility:hidden}.summary,.summary *{visibility:visible}.summary{position:absolute;left:0;top:0;width:100%;border:0;box-shadow:none}.noprint{display:none!important}}
+.tag.g{background:var(--line);color:var(--mute)}
+.pgt{margin-top:0}
+/* collapsible blocks */
+.fold{border:1px solid var(--line);border-radius:14px;margin-top:12px;background:var(--card);overflow:hidden}.fold.sm{margin-top:8px;border-radius:10px}
+.foldh{display:flex;align-items:center;gap:8px;width:100%;padding:12px 14px;border:0;background:none;color:var(--ink);font:inherit;cursor:pointer;text-align:left}.foldh:hover{background:var(--prib)}.chev{width:14px;color:var(--mute)}
+.foldb{padding:4px 14px 14px;border-top:1px solid var(--line)}
+/* search + filter */
+.sf{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}.sf input[type=text]{flex:1 1 240px;margin-top:0}.sf select{width:auto;max-width:260px;margin-top:0}
+.chk2{display:inline-flex;gap:6px;align-items:center;font-size:13px;color:var(--ink);cursor:pointer}
+/* Document Review Center */
+.rc{display:grid;grid-template-columns:260px 1fr;gap:14px;margin-top:14px;align-items:start}.rcn{position:sticky;top:12px;background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:8px;max-height:calc(100vh - 24px);overflow:auto}
+.rci{display:flex;justify-content:space-between;align-items:center;gap:6px;width:100%;padding:7px 8px;border:0;background:none;border-radius:10px;color:var(--ink);font:600 12px inherit;text-align:left;cursor:pointer}.rci:hover:not(:disabled){background:var(--prib)}.rci:disabled{opacity:.65;cursor:default}
+.rcm{min-width:0;display:flex;flex-direction:column;gap:14px}
+.dc{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:14px;box-shadow:var(--shadow)}
+.pv{margin:10px 0;background:var(--bg);border:1px solid var(--line);border-radius:12px;min-height:120px;display:grid;place-items:center;overflow:hidden}.pv iframe{width:100%;height:560px;border:0;display:block}.pv img{max-width:100%;max-height:560px;display:block}
+.rb{margin-top:8px;padding:10px;border-radius:12px;background:var(--badbg)}
+.cmbox{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}.cmbox input[type=text]{flex:1 1 220px;margin-top:0}
+.tl{list-style:none;margin:6px 0 0;padding:0 0 0 14px;border-left:2px solid var(--line)}.tl li{position:relative;padding:4px 0 8px 12px;font-size:13px}.tld{position:absolute;left:-20px;top:9px;width:10px;height:10px;border-radius:50%;background:var(--pri);border:2px solid var(--card)}.cm{margin-top:2px;white-space:pre-wrap}
+@media(max-width:900px){.rc{grid-template-columns:1fr}.rcn{position:static;max-height:none}}
+/* guide + revisions (candidate portal) */
+.guide ol{margin:8px 0 0;padding-left:20px}.guide li{margin:4px 0}.leg{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:8px;font-size:13px}

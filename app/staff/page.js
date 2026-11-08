@@ -1,10 +1,12 @@
 'use client'
-import { useEffect, useState, useCallback } from 'react'
-import JSZip from 'jszip'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { supabase } from '../../lib/supabase'
-import { CATS, RCATS, RC, C, isR, AOU, REHIRE, rlbl, rreq, rreqd, okR, nm, base, reqd, okCat, fname, lbl, fdt } from '../../lib/categories'
+import { CATS, RCATS, RC, AOU, REHIRE, rlbl, rreq, okR, nm, base, fname, lbl, fdt } from '../../lib/categories'
 import { BUCKET, genericJobs, storeJobs } from '../../lib/upload'
 import { parseAou, parseRehire } from '../../lib/classify'
+import { DS, docStatus, chainOf } from '../../lib/status'
+import { buildRows, filterRows } from '../../lib/rows'
+import { eligible, addFiles, zipName, saveBlob, JSZip } from '../../lib/zipper'
 import OtpLogin from '../../components/OtpLogin'
 import CodeLogin from '../../components/CodeLogin'
 import Summary from '../../components/Summary'
@@ -12,11 +14,15 @@ import Stepper from '../../components/Stepper'
 import BulkUpload from '../../components/BulkUpload'
 import Avatar from '../../components/Avatar'
 import Dashboard from '../../components/Dashboard'
+import Fold from '../../components/Fold'
+import Versions from '../../components/Versions'
+import SearchFilter from '../../components/SearchFilter'
+import ReviewCenter from '../../components/ReviewCenter'
+import BulkDownload from '../../components/BulkDownload'
+import Reports from '../../components/Reports'
 import { usePhotoUrls } from '../../lib/photos'
 import { stageOf, STAGE_NAME } from '../../lib/stage'
 
-const ST = { wait: 'รอตรวจ', ok: 'ผ่านแล้ว', fix: 'ต้องแก้ไข' }
-const cls = (s) => (s === 'ok' ? 'ok' : s === 'fix' ? 'bad' : '')
 const Shell = ({ children, right }) => (
   <>
     <div className="topbar"><div className="topin">
@@ -26,20 +32,34 @@ const Shell = ({ children, right }) => (
     <div className="wrap xl">{children}</div>
   </>
 )
+const Ic = ({ d }) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={d} /></svg>
+const NAV = [
+  ['dash', 'Dashboard', 'M3 3h7v9H3zM14 3h7v5h-7zM14 12h7v9h-7zM3 16h7v5H3z'],
+  ['cands', 'Candidate List', 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8'],
+  ['review', 'Document Review', 'M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11'],
+  ['bulk', 'Bulk Download', 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3'],
+  ['reports', 'Reports', 'M18 20V10M12 20V4M6 20v-6'],
+  ['add', 'เพิ่มแคนดิเดต', 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M19 8v6M22 11h-6'],
+]
+const TITLE = Object.fromEntries(NAV.map((n) => [n[0], n[1]]))
+const titleBox = (d, upd) => <input type="text" defaultValue={d.title} placeholder="ไฟล์นี้เกี่ยวกับอะไร (ใช้เป็นชื่อไฟล์) เช่น สรุปสำนวนคดี" maxLength={80} onBlur={(e) => e.target.value.trim() !== (d.title || '') && upd(d, { title: e.target.value.trim() })} />
 
 export default function Staff() {
   const [ses, setSes] = useState(undefined)
   const [role, setRole] = useState(null)
   const [cands, setC] = useState([])
-  const [docs, setD] = useState([])
+  const [docs, setD] = useState([])        // active files only
+  const [hist, setH] = useState([])        // superseded (old revision) files
+  const [evs, setE] = useState([])         // review log
   const [sel, setSel] = useState(null)
   const [f, setF] = useState({ srf: '', pos: '', email: '' })
   const [msg, setMsg] = useState('')
-  const [flt, setFlt] = useState('all')
-  const [viewed, setViewed] = useState({})
+  const [flt, setFlt] = useState({ q: '', pos: '', st: 'all' })
   const [bz, setBz] = useState('')
   const [pg, setPg] = useState('dash')
+  const [rv, setRv] = useState(null)       // candidate id open in the Review Center
   const photos = usePhotoUrls(docs)
+  const timer = useRef(null)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSes(data.session))
@@ -53,21 +73,24 @@ export default function Staff() {
       const a = await supabase.from('candidates').select('*').order('created_at', { ascending: false })
       const b = await supabase.from('documents').select('*').order('created_at')
       const k = await supabase.from('candidate_checks').select('*')
+      const e = await supabase.from('document_events').select('*').order('created_at')
       const ck = Object.fromEntries((k.data || []).map((x) => [x.candidate_id, x]))
       setC((a.data || []).map((x) => ({ ...x, aou_status: ck[x.id]?.aou_status || null, rehire_status: ck[x.id]?.rehire_status || null })))
-      setD(b.data || [])
+      const all = b.data || []
+      setD(all.filter((d) => !d.superseded_at)); setH(all.filter((d) => d.superseded_at)); setE(e.data || [])
     }
   }, [])
   useEffect(() => { if (ses) load() }, [ses, load])
-  // real-time: a candidate uploads -> this page refreshes by itself
+  // real-time: a candidate uploads -> this page refreshes by itself (debounced)
   useEffect(() => {
     if (!ses) return
+    const soft = () => { clearTimeout(timer.current); timer.current = setTimeout(load, 400) }
     const ch = supabase.channel('staff-docs')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'documents' }, () => load())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'candidates' }, () => load())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'candidate_checks' }, () => load())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'documents' }, soft)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'candidates' }, soft)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'candidate_checks' }, soft)
       .subscribe()
-    return () => { supabase.removeChannel(ch) }
+    return () => { supabase.removeChannel(ch); clearTimeout(timer.current) }
   }, [ses, load])
 
   const out = ses ? <button className="btn sm" onClick={() => supabase.auth.signOut()}>ออกจากระบบ</button> : null
@@ -80,52 +103,54 @@ export default function Staff() {
   async function add(e) {
     e.preventDefault()
     const { error } = await supabase.from('candidates').insert({ srf_no: f.srf.trim(), position: f.pos.trim(), email: f.email.trim().toLowerCase() })
-    if (error) setMsg(error.message); else { setMsg(''); setF({ srf: '', pos: '', email: '' }); load() }
+    if (error) setMsg(error.message); else { setMsg('เพิ่มแคนดิเดตแล้ว'); setF({ srf: '', pos: '', email: '' }); load() }
   }
   async function upd(d, p) {
     const { error } = await supabase.from('documents').update(p).eq('id', d.id)
-    setMsg(error ? (/ID card/.test(error.message) ? 'บัตรประชาชนต้องปิดบังข้อมูลด้วยเครื่องมือและผ่านการตรวจของ HR ก่อนอนุมัติ ไฟล์นี้อนุมัติไม่ได้ ให้ตีกลับเพื่ออัปโหลดใหม่' : error.message) : '')
+    setMsg(error ? (/ID card/.test(error.message) ? 'บัตรประชาชนต้องปิดบังข้อมูลด้วยเครื่องมือและผ่านการตรวจของ HR ก่อนอนุมัติ ไฟล์นี้อนุมัติไม่ได้ ให้ส่ง Revision Required เพื่ออัปโหลดใหม่' : error.message) : '')
     load()
   }
-  async function setStatus(d, v) {
-    if (v === 'ok' && d.category === '2.1') {
-      if (!viewed[d.id]) { setMsg('กรุณากด "เปิดดู" ตรวจไฟล์บัตรประชาชนฉบับสุดท้ายก่อนอนุมัติ'); return }
+  // Review Center actions. status: 'ok' = Approve · 'fix' = Request Revision (note required) · 'wait' = undo
+  async function review(d, status, note = '') {
+    if (status === 'ok' && d.category === '2.1') {
       if (!confirm('ยืนยันว่าตรวจไฟล์สุดท้ายแล้ว และไม่พบศาสนาและหมู่โลหิตบนบัตร?')) return
       return upd(d, { status: 'ok', note: '', redaction_checked_at: new Date().toISOString(), redaction_checked_by: ses.user.email })
     }
-    return upd(d, { status: v, note: v === 'fix' ? d.note : '', ...(d.category === '2.1' ? { redaction_checked_at: null, redaction_checked_by: null } : {}) })
+    if (status === 'fix' && !note.trim()) { setMsg('กรุณาระบุเหตุผลที่ต้องแก้ไข'); return }
+    return upd(d, { status, note: status === 'fix' ? note.trim() : '', ...(d.category === '2.1' ? { redaction_checked_at: null, redaction_checked_by: null } : {}) })
+  }
+  async function comment(d, text, visible) {
+    const { error } = await supabase.from('document_events').insert({ document_id: d.id, candidate_id: d.candidate_id, category: d.category, action: 'comment', comment: text, visible, actor_role: 'recruiter', actor_email: ses.user.email, file_name: d.original_name, rev: d.rev })
+    setMsg(error ? error.message : ''); load()
+  }
+  // first time a file scrolls into view in the Review Center: Received -> Pending
+  async function opened(d) {
+    const at = new Date().toISOString()
+    setD((a) => a.map((x) => (x.id === d.id ? { ...x, opened_at: at } : x)))
+    await supabase.from('documents').update({ opened_at: at }).eq('id', d.id)
   }
   async function view(d) {
     const { data } = await supabase.storage.from(BUCKET).createSignedUrl(d.storage_path, 60)
-    if (data) { setViewed((v) => ({ ...v, [d.id]: true })); window.open(data.signedUrl, '_blank') }
+    if (data) window.open(data.signedUrl, '_blank')
   }
   async function delDoc(d) {
-    if (!confirm('ลบไฟล์นี้?')) return
-    await supabase.storage.from(BUCKET).remove([d.storage_path])
-    await supabase.from('documents').delete().eq('id', d.id); load()
+    if (!confirm('ลบไฟล์นี้ (รวมประวัติเวอร์ชันเก่าของไฟล์นี้)?')) return
+    const ch = chainOf(d, hist)
+    await supabase.storage.from(BUCKET).remove(ch.map((x) => x.storage_path))
+    await supabase.from('documents').delete().in('id', ch.map((x) => x.id)); load()
   }
   async function delCand(c) {
     if (!confirm('ลบแคนดิเดตและไฟล์ทั้งหมด? ย้อนกลับไม่ได้')) return
-    const p = docs.filter((d) => d.candidate_id === c.id).map((d) => d.storage_path)
+    const p = [...docs, ...hist].filter((d) => d.candidate_id === c.id).map((d) => d.storage_path)
     if (p.length) await supabase.storage.from(BUCKET).remove(p)
     await supabase.from('candidates').delete().eq('id', c.id); setSel(null); load()
   }
-  async function stage(c, col) { await supabase.from('candidates').update({ [col]: c[col] ? null : new Date().toISOString() }).eq('id', c.id); load() }
   async function zip(c) {
-    // only approved files; an ID card additionally needs the redaction tool + HR check
-    const ok = docs.filter((d) => d.candidate_id === c.id && d.status === 'ok' && (d.category !== '2.1' || (d.redaction === 'tool' && d.redaction_checked_at)) && (d.category !== 'RHD' || c.rehire_status === 'rehire'))
-    if (!ok.length) { setMsg('ยังไม่มีไฟล์ที่ตรวจ "ผ่านแล้ว"'); return }
+    const list = eligible(c, docs, 'verified', true)
+    if (!list.length) { setMsg('ยังไม่มีไฟล์ที่ Verified'); return }
     setMsg('กำลังรวมไฟล์...')
-    const z = new JSZip()
-    for (const d of ok) {
-      const { data } = await supabase.storage.from(BUCKET).download(d.storage_path)
-      if (data) z.file(fname(c, d, ok), data)
-    }
-    const b = await z.generateAsync({ type: 'blob' })
-    const a = document.createElement('a')
-    a.href = URL.createObjectURL(b)
-    a.download = `SRF ${c.srf_no.replace(/[\\/:*?"<>|]/g, '-')} - ${base(c)}.zip`
-    a.click(); setMsg('')
+    const z = new JSZip(); await addFiles(z, c, list)
+    saveBlob(await z.generateAsync({ type: 'blob' }), zipName(c) + '.zip'); setMsg('')
   }
 
   // ---- recruiter-side checklist ----
@@ -138,13 +163,11 @@ export default function Staff() {
     if (!keep) setMsg('')
     setBz(c.id + k[0])
     try { await genericJobs(k, files, bad, jobs) } catch { bad.push('ประมวลผลไฟล์ไม่ได้ ลองใหม่หรือใช้ไฟล์อื่น') }
-    const old = docs.filter((d) => d.candidate_id === c.id && d.category === k[0])
+    const old = docs.find((d) => d.candidate_id === c.id && d.category === k[0])
     // recruiter-side files need no review step, so they are stored as already approved (they go into the Zip)
-    const n = await storeJobs(c.id, k[0], jobs, bad, { status: 'ok' })
-    if (n && k[0] !== 'ROT' && old.length) {  // one file per category: the new one replaces the old one
-      await supabase.storage.from(BUCKET).remove(old.map((d) => d.storage_path))
-      await supabase.from('documents').delete().in('id', old.map((d) => d.id))
-    }
+    // one file per category: a new file becomes the next revision and the old one stays in the history
+    if (k[0] !== 'ROT' && jobs.length > 1) { bad.push('หมวดนี้ใช้ 1 ไฟล์ ระบบใช้ไฟล์แรกให้'); jobs.length = 1 }
+    await storeJobs(c.id, k[0], jobs, bad, { status: 'ok', ...(k[0] !== 'ROT' && old ? { replaces: old.id } : {}) })
     setBz(''); if (bad.length) setMsg((m) => (keep && m ? m + ' · ' : '') + bad.join(' · ')); load()
   }
   async function bulkR(c, list) {
@@ -160,180 +183,230 @@ export default function Staff() {
     setBz('')
   }
 
-  function openCand(c) {
-    setPg('cands'); setFlt('all'); setSel(c.id)
+  function openCand(c) {          // from the dashboard: jump to the Review Center of this candidate
+    setPg('review'); setRv(c.id)
+  }
+  function showCand(c) {
+    setPg('cands'); setFlt({ q: '', pos: '', st: 'all' }); setSel(c.id)
     setTimeout(() => document.getElementById('cand-' + c.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80)
   }
+  const go = (k) => { setPg(k); setMsg(''); if (k !== 'review') setRv(null) }
   const nameOf = (c) => (c.first_name ? base(c) : c.email)
 
-  const info = cands.map((c) => {
-    const all = docs.filter((d) => d.candidate_id === c.id), m = all.filter((d) => !isR(d.category)), mr = all.filter((d) => isR(d.category)), r = reqd(c), rr = rreqd(c)
-    return { c, m, mr, stage: stageOf(c, all), n: r.length, miss: r.filter((k) => !okCat(m, c, k)), rn: rr.length, rmiss: rr.filter((k) => !okR(mr, c, k)), w: m.filter((d) => d.status === 'wait').length, x: m.filter((d) => d.status === 'fix').length }
-  })
-  const list = info.filter((i) => flt === 'all' || (flt === 'miss' && i.miss.length) || (flt === 'wait' && i.w) || (flt === 'fix' && i.x) || (flt === 'rmiss' && i.rmiss.length) || (flt === 'done' && !i.miss.length))
-  const Ic = ({ d }) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={d} /></svg>
+  const info = buildRows(cands, docs)
+  const positions = [...new Set(cands.map((c) => c.position).filter(Boolean))].sort()
+  const list = filterRows(info, flt)
+  const rvRow = rv && info.find((i) => i.c.id === rv)
+  const filesWait = info.reduce((a, i) => a + i.w, 0), filesFix = info.reduce((a, i) => a + i.x, 0)
+
+  const Tags = ({ r }) => (
+    <>
+      {r.rc > 0 && <span className={'tag ' + DS.received[2]}>Received {r.rc}</span>}{' '}
+      {r.pd > 0 && <span className="tag">Pending {r.pd}</span>}{' '}
+      {r.x > 0 && <span className="tag bad">Revision Required {r.x}</span>}
+    </>
+  )
   return (
     <Shell right={out}>
       <div className="app">
         <nav className="side" aria-label="เมนู">
-          <button type="button" className={'nav' + (pg === 'dash' ? ' on' : '')} onClick={() => setPg('dash')}><Ic d="M3 3h7v9H3zM14 3h7v5h-7zM14 12h7v9h-7zM3 16h7v5H3z" />Dashboard</button>
-          <button type="button" className={'nav' + (pg === 'cands' ? ' on' : '')} onClick={() => setPg('cands')}><Ic d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8" />แคนดิเดต</button>
+          {NAV.map(([k, t, d]) => <button type="button" key={k} className={'nav' + (pg === k ? ' on' : '')} onClick={() => go(k)}><Ic d={d} />{t}</button>)}
         </nav>
         <div className="main">
-      {msg && <div className="err" style={{ marginBottom: 10 }}>{msg}</div>}
-      {pg === 'dash' && (<><h1 className="pgt">Dashboard</h1><Dashboard rows={info} photos={photos} onOpen={openCand} onZip={zip} /></>)}
-      {pg === 'cands' && (<>
-      <h1 className="pgt">แคนดิเดต</h1>
-      <div className="kpis">
-        <div className="kpi"><span className="sub">ผู้สมัครทั้งหมด</span><b>{cands.length}</b></div>
-        <div className="kpi"><span className="sub">ส่งเอกสารบังคับครบ</span><b>{info.filter((i) => !i.miss.length).length}</b></div>
-        <div className="kpi"><span className="sub">ไฟล์รอตรวจ</span><b>{docs.filter((d) => d.status === 'wait').length}</b></div>
-        <div className="kpi"><span className="sub">ไฟล์ต้องแก้ไข</span><b>{docs.filter((d) => d.status === 'fix').length}</b></div>
-      </div>
-      <form className="panel" onSubmit={add}>
-        <b>เพิ่มแคนดิเดต</b>
-        <div className="grid3">
-          <label className="f">อีเมลแคนดิเดต<input type="text" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} /></label>
-          <label className="f">เลข SRF<input type="text" value={f.srf} placeholder="002/2026" onChange={(e) => setF({ ...f, srf: e.target.value })} /></label>
-          <label className="f">ชื่อตำแหน่ง<input type="text" value={f.pos} onChange={(e) => setF({ ...f, pos: e.target.value })} /></label>
-        </div>
-        <div style={{ marginTop: 12 }}><button className="btn pri" type="submit">เพิ่ม</button></div>
-      </form>
-      <div className="ctl" style={{ marginBottom: 12 }}>
-        <select value={flt} onChange={(e) => setFlt(e.target.value)} aria-label="กรอง">
-          <option value="all">ทั้งหมด</option><option value="miss">ยังขาดเอกสารบังคับ</option><option value="wait">มีไฟล์รอตรวจ</option>
-          <option value="fix">มีไฟล์ต้องแก้ไข</option><option value="rmiss">ฝั่ง Recruiter ยังไม่ครบ</option><option value="done">ส่งครบแล้ว</option>
-        </select>
-      </div>
-      {!list.length && <div className="panel">ไม่พบแคนดิเดตตามเงื่อนไข</div>}
-      {list.map(({ c, m, mr, n, miss, rn, rmiss, w, x }) => {
-        const open = sel === c.id
-        return (
-          <section className="panel" key={c.id} id={'cand-' + c.id}>
-            <div className="row" onClick={() => setSel(open ? null : c.id)}>
-              <div style={{ display: 'flex', gap: 12, alignItems: 'center', minWidth: 0 }}>
-                <Avatar url={photos[c.id]} name={c.first_name ? base(c) : ''} size={46} />
-                <div style={{ minWidth: 0 }}><b>{base(c)}</b><div className="sub">{c.position} · SRF {c.srf_no} · {c.email}</div></div>
+          {msg && <div className="err" style={{ marginBottom: 10 }}>{msg}</div>}
+          <h1 className="pgt">{TITLE[pg]}</h1>
+
+          {pg === 'dash' && <Dashboard rows={info} photos={photos} onOpen={openCand} onZip={zip} />}
+
+          {pg === 'add' && (
+            <form className="panel" onSubmit={add}>
+              <b>เพิ่มแคนดิเดต</b>
+              <div className="grid3">
+                <label className="f">อีเมลแคนดิเดต<input type="text" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} /></label>
+                <label className="f">เลข SRF<input type="text" value={f.srf} placeholder="002/2026" onChange={(e) => setF({ ...f, srf: e.target.value })} /></label>
+                <label className="f">ชื่อตำแหน่ง<input type="text" value={f.pos} onChange={(e) => setF({ ...f, pos: e.target.value })} /></label>
               </div>
-              <div style={{ textAlign: 'right' }}>
-                <span className={'tag ' + (miss.length ? '' : 'ok')}>แคนดิเดตส่งแล้ว {n - miss.length}/{n}</span>{' '}
-                <span className={'tag ' + (rmiss.length ? '' : 'ok')}>Recruiter {rn - rmiss.length}/{rn}</span>{' '}
-                {w > 0 && <span className="tag n">รอตรวจ {w}</span>}{' '}{x > 0 && <span className="tag bad">แก้ไข {x}</span>}
-              </div>
-            </div>
-            {miss.length > 0 && <div className="err">แคนดิเดตยังขาด (บังคับ): {miss.map(lbl).join(' · ')}</div>}
-            {rmiss.length > 0 && <div className="err">ฝั่ง Recruiter ยังขาด (บังคับ): {rmiss.map(rlbl).join(' · ')}</div>}
-            {open && (
-              <>
-                <div className="srf">
-                  <Avatar url={photos[c.id]} name={c.first_name ? base(c) : ''} size={96} portrait />
-                  <div style={{ minWidth: 0 }}>
-                    <div className="sub">SRF {c.srf_no}</div>
-                    <div className="nm">{c.first_name ? base(c) : 'ยังไม่ได้กรอกชื่อ'}</div>
-                    <div className="sub">{c.position} · {c.email}</div>
-                    <div className="meta">
-                      <span className="tag n">{STAGE_NAME[stageOf(c, [...m, ...mr])]}</span>
-                      {!photos[c.id] && <span className="tag">ยังไม่มีรูปถ่าย</span>}
-                      {m.some((d) => d.category === 'PH' && d.status === 'wait') && <span className="tag">รูปรอตรวจ</span>}
-                      {m.some((d) => d.category === 'PH' && d.status === 'fix') && <span className="tag bad">รูปต้องแก้ไข</span>}
+              <div style={{ marginTop: 12 }}><button className="btn pri" type="submit">เพิ่ม</button></div>
+            </form>
+          )}
+
+          {pg === 'reports' && <Reports rows={info} />}
+          {pg === 'bulk' && <BulkDownload rows={info} docs={docs} positions={positions} photos={photos} />}
+
+          {pg === 'review' && (rvRow ? (
+            <ReviewCenter c={rvRow.c} m={rvRow.m} hist={hist.filter((h) => h.candidate_id === rvRow.c.id)} events={evs.filter((e) => e.candidate_id === rvRow.c.id)}
+              photo={photos[rvRow.c.id]} onBack={() => setRv(null)} onReview={review} onComment={comment} onOpened={opened} />
+          ) : (
+            <>
+              <div className="hint" style={{ marginBottom: 10 }}>เลือกแคนดิเดตเพื่อดูเอกสารทั้งหมดในหน้าจอเดียว พร้อม Approve / Request Revision / Comment และประวัติการตรวจสอบ</div>
+              <SearchFilter f={flt} setF={setFlt} positions={positions} />
+              {!list.length && <div className="panel">ไม่พบแคนดิเดตตามเงื่อนไข</div>}
+              {[...list].sort((a, b) => b.rc + b.pd + b.x - (a.rc + a.pd + a.x)).map((r) => (
+                <section className="panel" key={r.c.id}>
+                  <div className="row" style={{ cursor: 'default' }}>
+                    <div style={{ display: 'flex', gap: 12, alignItems: 'center', minWidth: 0 }}>
+                      <Avatar url={photos[r.c.id]} name={r.c.first_name ? base(r.c) : ''} size={46} />
+                      <div style={{ minWidth: 0 }}><b>{nameOf(r.c)}</b><div className="sub">{r.c.position} · SRF {r.c.srf_no}</div></div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <Tags r={r} /> <span className="tag ok">Verified {r.m.filter((d) => d.status === 'ok').length}</span>{' '}
+                      <button type="button" className="btn pri sm" onClick={() => setRv(r.c.id)}>เปิด Review Center</button>
                     </div>
                   </div>
-                </div>
-                <div style={{ marginTop: 12 }}><Stepper c={c} docs={docs} /></div>
-                <Summary c={c} docs={docs} photo={photos[c.id]} />
-                <div className="panel" style={{ marginTop: 14 }}>
-                  <b style={{ fontSize: 16 }}>Checklist เอกสารฝั่ง Recruiter</b>
-                  <div className="hint">ไฟล์ PDF ทั้งหมด · แคนดิเดตมองไม่เห็นส่วนนี้ · ไฟล์จะรวมอยู่ใน Zip ให้ Hiring โหลดได้ทีเดียว</div>
-                  <div style={{ marginTop: 10 }}>
-                    <BulkUpload cats={RCATS} existing={Object.fromEntries(RCATS.map((k) => [k[0], mr.filter((d) => d.category === k[0]).length]))} onConfirm={(l) => bulkR(c, l)} busy={bz === 'bulk' + c.id} />
-                  </div>
-                  {rreq(c, mr).map((k) => {
-                    const l = mr.filter((d) => d.category === k[0]), ok = okR(mr, c, k), need = !k[5] && (k[0] !== 'RHD' || c.rehire_status === 'rehire')
-                    const unused = k[0] === 'RHD' && c.rehire_status !== 'rehire'
-                    return (
-                      <section className={'panel cat' + (ok ? ' done' : need ? ' need' : '')} key={k[0]} style={{ boxShadow: 'none', marginBottom: 10 }}>
-                        <div className="chk"><i>{ok ? '✅' : '⬜'}</i><b>{rlbl(k)}</b> <span className={'tag ' + (need ? '' : 'n')}>{need ? 'บังคับ' : 'ไม่บังคับ'}</span></div>
-                        {k[3] && <div className="hint">{k[3]}</div>}
-                        {k[0] === 'AOU' && (
-                          <div className="ctl">
-                            <select value={c.aou_status || ''} onChange={(e) => setCheck(c, { aou_status: e.target.value || null })}>
-                              <option value="">— เลือกสถานะ AOU —</option>
-                              {Object.keys(AOU).map((v) => <option key={v} value={v}>{AOU[v]}</option>)}
-                            </select>
-                            {!c.aou_status && <span className="err">ยังไม่ได้เลือกสถานะ</span>}
-                          </div>
-                        )}
-                        {k[0] === 'RHC' && (
-                          <div className="ctl">
-                            <select value={c.rehire_status || ''} onChange={(e) => setCheck(c, { rehire_status: e.target.value || null })}>
-                              <option value="">— เลือกสถานะ Rehire —</option>
-                              {Object.keys(REHIRE).map((v) => <option key={v} value={v}>{REHIRE[v]}</option>)}
-                            </select>
-                            {!c.rehire_status && <span className="err">ยังไม่ได้เลือกสถานะ</span>}
-                          </div>
-                        )}
-                        {k[0] === 'EML' && c.aou_status === 'b_clear' && !l.length && <div className="hint" style={{ color: 'var(--warn)' }}>ผล AOU เป็น B But Clear แนะนำให้แนบอีเมลยืนยัน</div>}
-                        {unused && <div className="err">ตอนนี้เลือก New Hire จึงไม่ถูกนับและไม่รวมใน Zip ลบไฟล์นี้ หรือเปลี่ยนสถานะกลับเป็น Rehire</div>}
-                        <ul className="files">
-                          {l.map((d) => (
-                            <li key={d.id}>
-                              <div className="fl"><span>{fname(c, d, l)}</span></div>
-                              <div className="hint">อัปเดต {fdt(d.updated_at || d.created_at)}</div>
-                              <div className="ctl">
-                                <button className="btn sm" onClick={() => view(d)}>เปิดดู</button>
-                                <select value={d.category} onChange={(e) => upd(d, { category: e.target.value })}>
-                                  {RCATS.map((x) => <option key={x[0]} value={x[0]}>ย้ายไป {rlbl(x)}</option>)}
-                                </select>
-                                <button className="btn sm" onClick={() => delDoc(d)}>ลบ</button>
-                              </div>
-                              {d.category === 'ROT' && <input type="text" defaultValue={d.title} placeholder="ไฟล์นี้เกี่ยวกับอะไร (ใช้เป็นชื่อไฟล์) เช่น สรุปสำนวนคดี" maxLength={80} onBlur={(e) => e.target.value.trim() !== (d.title || '') && upd(d, { title: e.target.value.trim() })} />}
-                            </li>
-                          ))}
-                        </ul>
-                        <div style={{ marginTop: 8 }}>
-                          <input type="file" accept=".pdf,.jpg,.jpeg,.png" multiple={k[0] === 'ROT'} disabled={bz === c.id + k[0]}
-                            onChange={(e) => { upR(c, k, [...e.target.files]); e.target.value = '' }} />
-                          <div className="hint">{l.length && k[0] !== 'ROT' ? 'เลือกไฟล์ใหม่เพื่อแทนที่ไฟล์เดิม' : 'PDF ไม่เกิน 10 MB'}{bz === c.id + k[0] ? ' · กำลังอัปโหลด...' : ''}</div>
-                        </div>
-                      </section>
-                    )
-                  })}
-                </div>
-                <b>เอกสารที่แคนดิเดตส่ง</b>
-                <ul className="files">
-                  {!m.length && <li>ยังไม่มีไฟล์จากแคนดิเดต</li>}
-                  {m.map((d) => (
-                    <li key={d.id}>
-                      <div className="fl"><span>{fname(c, d, m)}</span><span className={'tag ' + cls(d.status)}>{ST[d.status]}</span></div>
-                      <div className="hint">อัปเดต {fdt(d.updated_at)}
-                        {d.category === '2.1' && (d.redaction === 'tool' ? ` · ปิดบังด้วยเครื่องมือ ${d.redaction_boxes || ''} จุด${d.redaction_checked_at ? ' · HR ตรวจแล้ว (' + d.redaction_checked_by + ')' : ' · รอ HR ตรวจไฟล์สุดท้าย'}` : ' · ไม่ผ่านเครื่องมือปิดบัง อนุมัติไม่ได้')}</div>
-                      <div className="ctl">
-                        <button className="btn sm" onClick={() => view(d)}>เปิดดู</button>
-                        <select value={d.status} onChange={(e) => setStatus(d, e.target.value)}>
-                          {Object.keys(ST).map((s) => <option key={s} value={s}>{ST[s]}</option>)}
-                        </select>
-                        <select value={d.category} onChange={(e) => upd(d, { category: e.target.value })}>
-                          {CATS.map((k) => <option key={k[0]} value={k[0]}>ย้ายไป {nm(k[0])}{k[1]}</option>)}
-                        </select>
-                        <button className="btn sm" onClick={() => delDoc(d)}>ลบ</button>
+                </section>
+              ))}
+            </>
+          ))}
+
+          {pg === 'cands' && (
+            <>
+              <div className="kpis">
+                <div className="kpi"><span className="sub">ผู้สมัครทั้งหมด</span><b>{cands.length}</b></div>
+                <div className="kpi"><span className="sub">Missing · ยังขาดเอกสารบังคับ (คน)</span><b>{info.filter((i) => i.miss.length).length}</b></div>
+                <div className="kpi"><span className="sub">ไฟล์รอตรวจ (Received + Pending)</span><b>{filesWait}</b></div>
+                <div className="kpi"><span className="sub">Revision Required (ไฟล์)</span><b>{filesFix}</b></div>
+              </div>
+              <SearchFilter f={flt} setF={setFlt} positions={positions} />
+              <div className="hint" style={{ marginBottom: 10 }}>พบ {list.length} จาก {cands.length} คน</div>
+              {!list.length && <div className="panel">ไม่พบแคนดิเดตตามเงื่อนไข</div>}
+              {list.map((r) => {
+                const { c, m, mr, n, miss, rn, rmiss } = r, open = sel === c.id
+                return (
+                  <section className="panel" key={c.id} id={'cand-' + c.id}>
+                    <div className="row" onClick={() => setSel(open ? null : c.id)}>
+                      <div style={{ display: 'flex', gap: 12, alignItems: 'center', minWidth: 0 }}>
+                        <Avatar url={photos[c.id]} name={c.first_name ? base(c) : ''} size={46} />
+                        <div style={{ minWidth: 0 }}><b>{base(c)}</b><div className="sub">{c.position} · SRF {c.srf_no} · {c.email}</div></div>
                       </div>
-                      {d.category === 'OT' && <input type="text" defaultValue={d.title} placeholder="ไฟล์นี้เกี่ยวกับอะไร (ใช้เป็นชื่อไฟล์) เช่น สรุปสำนวนคดี" maxLength={80} onBlur={(e) => e.target.value.trim() !== (d.title || '') && upd(d, { title: e.target.value.trim() })} />}
-                      {d.status === 'fix' && <input type="text" defaultValue={d.note} placeholder="เหตุผลที่ต้องแก้ไข (แคนดิเดตจะเห็น)" onBlur={(e) => upd(d, { note: e.target.value })} />}
-                    </li>
-                  ))}
-                </ul>
-                <div className="ctl" style={{ marginTop: 12 }}>
-                  <button className="btn pri" onClick={() => zip(c)}>โหลดทั้งชุด (Zip) เฉพาะที่ผ่านแล้ว</button>
-                  <button className="btn" onClick={() => stage(c, 'signed_at')}>{c.signed_at ? 'ยกเลิก: เซ็นเอกสารแล้ว' : 'ทำเครื่องหมาย: เซ็นเอกสารแล้ว'}</button>
-                  <button className="btn" onClick={() => stage(c, 'ready_at')}>{c.ready_at ? 'ยกเลิก: พร้อมเริ่มงาน' : 'ทำเครื่องหมาย: พร้อมเริ่มงาน'}</button>
-                  <button className="btn" onClick={() => delCand(c)}>ลบแคนดิเดต</button>
-                </div>
-              </>
-            )}
-          </section>
-        )
-      })}
-      </>)}
+                      <div style={{ textAlign: 'right' }}>
+                        <span className={'tag ' + (miss.length ? '' : 'ok')}>แคนดิเดตส่งแล้ว {n - miss.length}/{n}</span>{' '}
+                        <span className={'tag ' + (rmiss.length ? '' : 'ok')}>Recruiter {rn - rmiss.length}/{rn}</span>{' '}
+                        <Tags r={r} />
+                      </div>
+                    </div>
+                    {miss.length > 0 && <div className="err">Missing (บังคับ): {miss.map(lbl).join(' · ')}</div>}
+                    {rmiss.length > 0 && <div className="err">ฝั่ง Recruiter ยังขาด (บังคับ): {rmiss.map(rlbl).join(' · ')}</div>}
+                    {open && (
+                      <>
+                        <div className="srf">
+                          <Avatar url={photos[c.id]} name={c.first_name ? base(c) : ''} size={96} portrait />
+                          <div style={{ minWidth: 0 }}>
+                            <div className="sub">SRF {c.srf_no}</div>
+                            <div className="nm">{c.first_name ? base(c) : 'ยังไม่ได้กรอกชื่อ'}</div>
+                            <div className="sub">{c.position} · {c.email}</div>
+                            <div className="meta">
+                              <span className="tag n">{STAGE_NAME[stageOf(c, [...m, ...mr])]}</span>
+                              {!photos[c.id] && <span className="tag g">ยังไม่มีรูปถ่าย</span>}
+                              {m.some((d) => d.category === 'PH' && d.status === 'fix') && <span className="tag bad">รูปต้องแก้ไข</span>}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="ctl" style={{ marginTop: 12 }}>
+                          <button className="btn pri" onClick={() => { setPg('review'); setRv(c.id) }}>เปิด Review Center</button>
+                          <button className="btn" onClick={() => zip(c)}>โหลด Zip (Verified)</button>
+                          <button className="btn" onClick={() => delCand(c)}>ลบแคนดิเดต</button>
+                        </div>
+                        <div style={{ marginTop: 12 }}><Stepper c={c} docs={docs} rdone={!rmiss.length} /></div>
+
+                        <Fold title="สรุปเอกสารผู้สมัคร" badge={miss.length ? <span className="tag bad" style={{ marginLeft: 8 }}>ขาด {miss.length}</span> : <span className="tag ok" style={{ marginLeft: 8 }}>ครบ</span>}>
+                          <Summary c={c} docs={docs} photo={photos[c.id]} />
+                        </Fold>
+
+                        <Fold title="Checklist เอกสารฝั่ง Recruiter" badge={<span className={'tag ' + (rmiss.length ? '' : 'ok')} style={{ marginLeft: 8 }}>{rn - rmiss.length}/{rn}</span>}>
+                          <div className="hint">ไฟล์ PDF ทั้งหมด · แคนดิเดตมองไม่เห็นส่วนนี้ · ไฟล์จะรวมอยู่ใน Zip ให้ Hiring โหลดได้ทีเดียว</div>
+                          <div style={{ marginTop: 10 }}>
+                            <BulkUpload cats={RCATS} existing={Object.fromEntries(RCATS.map((k) => [k[0], mr.filter((d) => d.category === k[0]).length]))} onConfirm={(l) => bulkR(c, l)} busy={bz === 'bulk' + c.id} />
+                          </div>
+                          {rreq(c, mr).map((k) => {
+                            const l = mr.filter((d) => d.category === k[0]), ok = okR(mr, c, k), need = !k[5] && (k[0] !== 'RHD' || c.rehire_status === 'rehire')
+                            const unused = k[0] === 'RHD' && c.rehire_status !== 'rehire'
+                            return (
+                              <section className={'panel cat' + (ok ? ' done' : need ? ' need' : '')} key={k[0]} style={{ boxShadow: 'none', marginBottom: 10 }}>
+                                <div className="chk"><i>{ok ? '✅' : '⬜'}</i><b>{rlbl(k)}</b> <span className={'tag ' + (need ? '' : 'n')}>{need ? 'บังคับ' : 'ไม่บังคับ'}</span></div>
+                                {k[3] && <div className="hint">{k[3]}</div>}
+                                {k[0] === 'AOU' && (
+                                  <div className="ctl">
+                                    <select value={c.aou_status || ''} onChange={(e) => setCheck(c, { aou_status: e.target.value || null })}>
+                                      <option value="">— เลือกสถานะ AOU —</option>
+                                      {Object.keys(AOU).map((v) => <option key={v} value={v}>{AOU[v]}</option>)}
+                                    </select>
+                                    {!c.aou_status && <span className="err">ยังไม่ได้เลือกสถานะ</span>}
+                                  </div>
+                                )}
+                                {k[0] === 'RHC' && (
+                                  <div className="ctl">
+                                    <select value={c.rehire_status || ''} onChange={(e) => setCheck(c, { rehire_status: e.target.value || null })}>
+                                      <option value="">— เลือกสถานะ Rehire —</option>
+                                      {Object.keys(REHIRE).map((v) => <option key={v} value={v}>{REHIRE[v]}</option>)}
+                                    </select>
+                                    {!c.rehire_status && <span className="err">ยังไม่ได้เลือกสถานะ</span>}
+                                  </div>
+                                )}
+                                {k[0] === 'EML' && c.aou_status === 'b_clear' && !l.length && <div className="hint" style={{ color: 'var(--warn)' }}>ผล AOU เป็น B But Clear แนะนำให้แนบอีเมลยืนยัน</div>}
+                                {unused && <div className="err">ตอนนี้เลือก New Hire จึงไม่ถูกนับและไม่รวมใน Zip ลบไฟล์นี้ หรือเปลี่ยนสถานะกลับเป็น Rehire</div>}
+                                <ul className="files">
+                                  {l.map((d) => (
+                                    <li key={d.id}>
+                                      <div className="fl"><span>{fname(c, d, l)}</span><span className="tag ok">Received</span></div>
+                                      <div className="hint">อัปเดต {fdt(d.updated_at || d.created_at)}</div>
+                                      <div className="ctl">
+                                        <button className="btn sm" onClick={() => view(d)}>เปิดดู</button>
+                                        <select value={d.category} onChange={(e) => upd(d, { category: e.target.value })}>
+                                          {RCATS.map((x) => <option key={x[0]} value={x[0]}>ย้ายไป {rlbl(x)}</option>)}
+                                        </select>
+                                        <button className="btn sm" onClick={() => delDoc(d)}>ลบ</button>
+                                      </div>
+                                      {d.category === 'ROT' && titleBox(d, upd)}
+                                      {chainOf(d, hist).length > 1 && (
+                                        <Fold small title="ประวัติไฟล์เก่า" badge={<span className="tag n" style={{ marginLeft: 8 }}>{chainOf(d, hist).length} เวอร์ชัน</span>}>
+                                          <Versions chain={chainOf(d, hist)} onOpen={(v) => view(v)} />
+                                        </Fold>
+                                      )}
+                                    </li>
+                                  ))}
+                                </ul>
+                                <div style={{ marginTop: 8 }}>
+                                  <input type="file" accept=".pdf,.jpg,.jpeg,.png" multiple={k[0] === 'ROT'} disabled={bz === c.id + k[0]}
+                                    onChange={(e) => { upR(c, k, [...e.target.files]); e.target.value = '' }} />
+                                  <div className="hint">{l.length && k[0] !== 'ROT' ? 'เลือกไฟล์ใหม่เพื่อแทนที่ไฟล์เดิม' : 'PDF ไม่เกิน 10 MB'}{bz === c.id + k[0] ? ' · กำลังอัปโหลด...' : ''}</div>
+                                </div>
+                              </section>
+                            )
+                          })}
+                        </Fold>
+
+                        <Fold title="เอกสารที่แคนดิเดตส่ง" badge={<span className="tag g" style={{ marginLeft: 8 }}>{m.length} ไฟล์</span>}>
+                          <ul className="files">
+                            {!m.length && <li>ยังไม่มีไฟล์จากแคนดิเดต</li>}
+                            {m.map((d) => {
+                              const s = docStatus(d)
+                              return (
+                                <li key={d.id}>
+                                  <div className="fl"><span>{fname(c, d, m)} {d.rev > 1 && <span className="tag n">v{d.rev}</span>}</span><span className={'tag ' + DS[s][2]}>{DS[s][0]}</span></div>
+                                  <div className="hint">อัปเดต {fdt(d.updated_at)}
+                                    {d.category === '2.1' && (d.redaction === 'tool' ? ` · ปิดบังด้วยเครื่องมือ ${d.redaction_boxes || ''} จุด${d.redaction_checked_at ? ' · HR ตรวจแล้ว (' + d.redaction_checked_by + ')' : ' · รอ HR ตรวจไฟล์สุดท้าย'}` : ' · ไม่ผ่านเครื่องมือปิดบัง อนุมัติไม่ได้')}</div>
+                                  {d.status === 'fix' && <div className="err">เหตุผล: {d.note}</div>}
+                                  <div className="ctl">
+                                    <button className="btn sm" onClick={() => view(d)}>เปิดดู</button>
+                                    <button className="btn sm" onClick={() => { setPg('review'); setRv(c.id) }}>ตรวจใน Review Center</button>
+                                    <select value={d.category} onChange={(e) => upd(d, { category: e.target.value })}>
+                                      {CATS.map((k) => <option key={k[0]} value={k[0]}>ย้ายไป {nm(k[0])}{k[1]}</option>)}
+                                    </select>
+                                    <button className="btn sm" onClick={() => delDoc(d)}>ลบ</button>
+                                  </div>
+                                  {d.category === 'OT' && titleBox(d, upd)}
+                                </li>
+                              )
+                            })}
+                          </ul>
+                        </Fold>
+                      </>
+                    )}
+                  </section>
+                )
+              })}
+            </>
+          )}
         </div>
       </div>
     </Shell>
