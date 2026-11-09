@@ -6,6 +6,7 @@ import { BUCKET } from '../../lib/upload'
 import { eligible, addFiles, zipName, zipCandidate, saveBlob, JSZip } from '../../lib/zipper'
 import { usePhotoUrls } from '../../lib/photos'
 import OtpLogin from '../../components/OtpLogin'
+import CodeLogin from '../../components/CodeLogin'
 import Avatar from '../../components/Avatar'
 
 // /hiring : one place where Hiring picks up every document.
@@ -58,7 +59,7 @@ export default function Hiring() {
 
   const out = ses ? <button className="btn sm" onClick={() => supabase.auth.signOut()}>ออกจากระบบ</button> : null
   if (ses === undefined) return null
-  if (!ses) return <Shell><OtpLogin title="สำหรับทีม Hiring" /></Shell>
+  if (!ses) return <Shell><OtpLogin title="สำหรับทีม Hiring" /><CodeLogin mode="hiring" /></Shell>
   if (role === null) return <Shell right={out}>กำลังโหลด...</Shell>
   if (!['hiring', 'admin', 'recruiter'].includes(role)) return <Shell right={out}><div className="panel">อีเมลนี้ยังไม่มีสิทธิ์ใช้งานหน้านี้ กรุณาติดต่อ Recruiter</div></Shell>
 

@@ -6,6 +6,7 @@ import { loadImg, toJpg, mkPdf } from '../lib/images'
 import { BUCKET, extOf, genericJobs, storeJobs } from '../lib/upload'
 import { pdfPages } from '../lib/pdf'
 import OtpLogin from '../components/OtpLogin'
+import CodeLogin from '../components/CodeLogin'
 import Redact from '../components/Redact'
 import Scanner from '../components/Scanner'
 import Summary from '../components/Summary'
@@ -79,6 +80,7 @@ export default function Home() {
         <div className="panel"><b style={{ fontSize: 18 }}>ยินดีต้อนรับ</b>
           <div className="hint">กรอกอีเมลที่ได้รับเชิญ เราจะส่งรหัส OTP ให้ แล้วอัปโหลดเอกสารได้ทันที ไม่ต้องส่งครบในครั้งเดียว ทยอยส่งเท่าที่มีได้</div></div>
         <OtpLogin title="เข้าสู่ระบบด้วยอีเมลที่ได้รับเชิญ" />
+        <CodeLogin mode="candidate" />
         <p style={{ textAlign: 'center', marginTop: 36 }}><a className="mute" href="/staff">สำหรับเจ้าหน้าที่</a></p>
       </Shell>
     )
