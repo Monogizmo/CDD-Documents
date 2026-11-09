@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase'
 import { req, reqd, okCat, fname, nm, lbl, fdt, C, sexTh, redactTxt } from '../lib/categories'
 import { loadImg, toJpg, mkPdf } from '../lib/images'
 import { BUCKET, extOf, genericJobs, storeJobs } from '../lib/upload'
-import { pdfPages } from '../lib/pdf'
+import { pdfPages, askUntilOpen } from '../lib/pdf'
 import OtpLogin from '../components/OtpLogin'
 import CodeLogin from '../components/CodeLogin'
 import Redact from '../components/Redact'
@@ -18,6 +18,23 @@ import Versions from '../components/Versions'
 import { DS, docStatus, catStatus, chainOf } from '../lib/status'
 import { usePhotoUrls } from '../lib/photos'
 
+// asks for the password of a locked PDF; the file is unlocked in this browser, the password is never sent or stored
+function PwAsk({ file, wrong, onDone }) {
+  const [v, setV] = useState(''), [show, setShow] = useState(false)
+  return (
+    <div className="overlay">
+      <div className="panel" style={{ maxWidth: 460, margin: '60px auto' }}>
+        <b>ไฟล์นี้มีรหัสผ่าน</b>
+        <div className="hint" style={{ wordBreak: 'break-all' }}>{file.name}</div>
+        <div className="hint">กรอกรหัสผ่านของไฟล์ ระบบจะปลดล็อกในเครื่องของคุณ แล้วส่งต่อให้ Recruiter รหัสผ่านไม่ถูกส่งหรือบันทึกไว้ที่ไหน (ไฟล์ที่ปลดล็อกแล้วจะเป็นภาพ เลือกหรือค้นหาข้อความไม่ได้)</div>
+        {wrong && <div className="err">รหัสผ่านไม่ถูกต้อง ลองอีกครั้ง</div>}
+        <label className="f">รหัสผ่านของไฟล์<input type={show ? 'text' : 'password'} autoFocus autoComplete="off" value={v} onChange={(e) => setV(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && v) onDone(v) }} /></label>
+        <label className="chk2"><input type="checkbox" checked={show} onChange={(e) => setShow(e.target.checked)} /> แสดงรหัสผ่าน</label>
+        <div className="ctl"><button type="button" className="btn pri" disabled={!v} onClick={() => onDone(v)}>ปลดล็อก</button><button type="button" className="btn" onClick={() => onDone(null)}>ข้ามไฟล์นี้</button></div>
+      </div>
+    </div>
+  )
+}
 const Shell = ({ children, right }) => (
   <>
     <div className="topbar"><div className="topin">
@@ -42,6 +59,8 @@ export default function Home() {
   const [tab, setTab] = useState('up')
   const [idMode, setIdMode] = useState('self')   // ID card: 'self' = I already redacted it / nothing to redact, 'tool' = redact with the tool
   const [idOk, setIdOk] = useState(false)
+  const [pwAsk, setPwAsk] = useState(null)       // { file, wrong, res } while a locked PDF waits for its password
+  const ask = (file, wrong) => new Promise((res) => setPwAsk({ file, wrong, res }))
   const [scan, setScan] = useState(null)          // { k, d } while the scanner is open (d = file being revised)
   const uid = ses?.user?.id
   const photos = usePhotoUrls(docs)
@@ -126,7 +145,7 @@ export default function Home() {
   async function idJobs(files, bad, jobs) {
     if (idMode !== 'tool') {
       if (files.length > 1) bad.push('บัตรประชาชนส่งครั้งละ 1 ไฟล์ เลือกไฟล์ที่เหลือมาใหม่')
-      return genericJobs(C['2.1'], files.slice(0, 1), bad, jobs)
+      return genericJobs(C['2.1'], files.slice(0, 1), bad, jobs, ask)
     }
     const f = files[0], x = extOf(f)
     if (files.length > 1) bad.push('บัตรประชาชนปิดบังได้ครั้งละ 1 ไฟล์ เลือกไฟล์ที่เหลือมาใหม่')
@@ -134,7 +153,9 @@ export default function Home() {
     let pages = null
     if (x === 'pdf') {
       try {
-        const r = await pdfPages(f)
+        const o = await askUntilOpen(f, ask)
+        if (o.cancelled || o.failed) { bad.push(f.name + (o.failed ? ' รหัสผ่านไม่ถูกต้อง (ลองได้ 3 ครั้ง)' : ' ข้ามไฟล์นี้ เพราะไม่ได้กรอกรหัสผ่าน')); return }
+        const r = await pdfPages(f, 1.6, 5, o.password)
         if (!r.pages) { bad.push('PDF บัตรประชาชนยาวเกินไป (เกิน 5 หน้า)'); return }
         pages = r.pages
       } catch { bad.push('เปิด PDF ไม่ได้ (อาจมีรหัสผ่านหรือไฟล์เสีย) ลองถ่ายรูปบัตรแทน'); return }
@@ -153,7 +174,7 @@ export default function Home() {
     if (key === '2.1' && idMode === 'self' && !idOk) { setErr((e) => ({ ...e, '2.1': 'กรุณาติ๊กยืนยันว่าปิดบังศาสนาและกรุ๊ปเลือดแล้ว (หรือบัตรไม่มีข้อมูลนี้) ก่อนอัปโหลด หรือเลือก "ให้ระบบช่วยปิดบัง"' })); return }
     if (!keep) setErr({})
     setBusy(key)
-    try { if (key === '2.1') await idJobs(files, bad, jobs); else await genericJobs(k, files, bad, jobs) }
+    try { if (key === '2.1') await idJobs(files, bad, jobs); else await genericJobs(k, files, bad, jobs, ask) }
     catch { bad.push('ประมวลผลไฟล์ไม่ได้ ลองใหม่หรือใช้ไฟล์อื่น') }
     await storeJobs(c.id, key, jobs, bad, idExtra(key))
     setBusy(''); if (bad.length) setErr((e) => ({ ...e, [key]: bad.join(' · ') })); load(uid)
@@ -189,7 +210,7 @@ export default function Home() {
     const key = k[0], bad = [], jobs = []
     if (key === '2.1' && idMode === 'self' && !idOk) { setErr({ '2.1': 'กรุณาติ๊กยืนยันว่าปิดบังศาสนาและกรุ๊ปเลือดแล้ว (หรือบัตรไม่มีข้อมูลนี้) ก่อนอัปโหลด หรือเลือก "ให้ระบบช่วยปิดบัง"' }); return }
     setErr({}); setBusy(d.id)
-    try { if (key === '2.1') await idJobs(files, bad, jobs); else await genericJobs(k, files.slice(0, 1), bad, jobs) }
+    try { if (key === '2.1') await idJobs(files, bad, jobs); else await genericJobs(k, files.slice(0, 1), bad, jobs, ask) }
     catch { bad.push('ประมวลผลไฟล์ไม่ได้ ลองใหม่หรือใช้ไฟล์อื่น') }
     if (jobs.length) await storeJobs(c.id, key, jobs.slice(0, 1), bad, { replaces: d.id, title: d.title || '', ...idExtra(key) })
     setBusy(''); if (bad.length) setErr((e) => ({ ...e, [key]: bad.join(' · ') })); load(uid)
@@ -330,6 +351,7 @@ export default function Home() {
           </section>
         )
       })}
+      {pwAsk && <PwAsk file={pwAsk.file} wrong={pwAsk.wrong} onDone={(v) => { pwAsk.res(v); setPwAsk(null) }} />}
       {scan && <Scanner onDone={scanDone} onCancel={() => setScan(null)} />}
       {ov && <Redact pages={ov.pages} onCancel={() => { ov.res(null); setOv(null) }} onSave={(rr) => { ov.res(rr); setOv(null) }} />}
     </Shell>

@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../../lib/supabase'
-import { base, fname, fdt, isR } from '../../lib/categories'
+import { base, fname, fdt, isR, typeName } from '../../lib/categories'
 import { BUCKET } from '../../lib/upload'
 import { eligible, addFiles, zipName, zipCandidate, saveBlob, JSZip } from '../../lib/zipper'
 import { usePhotoUrls } from '../../lib/photos'
@@ -124,7 +124,7 @@ export default function Hiring() {
               <div style={{ display: 'flex', gap: 10, alignItems: 'center', minWidth: 0 }}>
                 <input type="checkbox" checked={!!sel[c.id]} aria-label={'เลือก ' + base(c)} onChange={(e) => setSel({ ...sel, [c.id]: e.target.checked })} />
                 <Avatar url={photos[c.id]} name={c.first_name ? base(c) : ''} size={46} />
-                <div style={{ minWidth: 0 }}><b>{c.first_name ? base(c) : c.email}</b><div className="sub">{c.position} · SRF {c.srf_no}</div></div>
+                <div style={{ minWidth: 0 }}><b>{c.first_name ? base(c) : c.email}</b><div className="sub">{c.position} · SRF {c.srf_no}{typeName(c) ? ' · ' + typeName(c) : ''}{c.recruiter_name ? ' · Recruiter: ' + c.recruiter_name : ''}</div></div>
               </div>
               <div className="rr">
                 <span className="tag ok">{l.length} ไฟล์พร้อมรับ</span>{' '}

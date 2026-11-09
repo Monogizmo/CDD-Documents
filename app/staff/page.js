@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { supabase } from '../../lib/supabase'
-import { CATS, RCATS, RC, AOU, REHIRE, rlbl, rreq, okR, nm, base, fname, lbl, fdt, redactTxt } from '../../lib/categories'
+import { CATS, RCATS, RC, AOU, REHIRE, rlbl, rlblS, lblS, rreq, okR, nm, base, fname, lbl, fdt, redactTxt, TYPES, typeKey, typeName } from '../../lib/categories'
 import { BUCKET, genericJobs, storeJobs } from '../../lib/upload'
 import { parseAou, parseRehire } from '../../lib/classify'
 import { DS, docStatus, chainOf } from '../../lib/status'
@@ -18,6 +18,7 @@ import Fold from '../../components/Fold'
 import Versions from '../../components/Versions'
 import SearchFilter from '../../components/SearchFilter'
 import ReviewCenter from '../../components/ReviewCenter'
+import PdfChecker from '../../components/PdfChecker'
 import BulkDownload from '../../components/BulkDownload'
 import Reports from '../../components/Reports'
 import { usePhotoUrls } from '../../lib/photos'
@@ -39,9 +40,21 @@ const NAV = [
   ['review', 'Document Review', 'M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11', 'ตรวจ'],
   ['bulk', 'Bulk Download', 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3', 'โหลด'],
   ['reports', 'Reports', 'M18 20V10M12 20V4M6 20v-6', 'รายงาน'],
+  ['checker', 'PDF Checker & Automation Prep', 'M5 3h10l4 4v14H5zM9 13l2 2 4-4', 'PDF'],
   ['add', 'เพิ่มแคนดิเดต', 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M19 8v6M22 11h-6', 'เพิ่ม'],
 ]
 const TITLE = Object.fromEntries(NAV.map((n) => [n[0], n[1]]))
+// missing documents as small chips instead of one long red line; hover / long-press a chip for the full Thai name
+function MissChips({ label, items, max = 4 }) {
+  const [all, setAll] = useState(false), shown = all ? items : items.slice(0, max)
+  return (
+    <div className="mg">
+      <span className="ml">{label} {items.length}</span>
+      {shown.map(([s, t]) => <span key={s} className="mc" title={t}>{s}</span>)}
+      {items.length > max && <button type="button" className="mc more" onClick={(e) => { e.stopPropagation(); setAll(!all) }}>{all ? 'ย่อ' : '+' + (items.length - max)}</button>}
+    </div>
+  )
+}
 const titleBox = (d, upd) => <input type="text" defaultValue={d.title} placeholder="ไฟล์นี้เกี่ยวกับอะไร (ใช้เป็นชื่อไฟล์) เช่น สรุปสำนวนคดี" maxLength={80} onBlur={(e) => e.target.value.trim() !== (d.title || '') && upd(d, { title: e.target.value.trim() })} />
 
 export default function Staff() {
@@ -52,9 +65,10 @@ export default function Staff() {
   const [hist, setH] = useState([])        // superseded (old revision) files
   const [evs, setE] = useState([])         // review log
   const [sel, setSel] = useState(null)
-  const [f, setF] = useState({ srf: '', pos: '', email: '' })
+  const [f, setF] = useState({ srf: '', pos: '', email: '', rec: '', typ: '' })
+  const [ctab, setCtab] = useState('sales')   // Candidate List tab: sales | non_sales | none (type not set yet)
   const [msg, setMsg] = useState('')
-  const [flt, setFlt] = useState({ q: '', pos: '', st: 'all' })
+  const [flt, setFlt] = useState({ q: '', pos: '', st: 'all', rec: '' })
   const [bz, setBz] = useState('')
   const [pg, setPg] = useState('dash')
   const [rv, setRv] = useState(null)       // candidate id open in the Review Center
@@ -102,8 +116,14 @@ export default function Staff() {
 
   async function add(e) {
     e.preventDefault()
-    const { error } = await supabase.from('candidates').insert({ srf_no: f.srf.trim(), position: f.pos.trim(), email: f.email.trim().toLowerCase() })
-    if (error) setMsg(error.message); else { setMsg('เพิ่มแคนดิเดตแล้ว'); setF({ srf: '', pos: '', email: '' }); load() }
+    if (!f.rec.trim() || !f.typ) { setMsg('กรุณาใส่ชื่อ Recruiter และเลือก Sales / Non-Sales'); return }
+    const { error } = await supabase.from('candidates').insert({ srf_no: f.srf.trim(), position: f.pos.trim(), email: f.email.trim().toLowerCase(), recruiter_name: f.rec.trim(), sales_type: f.typ })
+    // keep Recruiter + type for the next candidate (adding several in a row)
+    if (error) setMsg(error.message); else { setMsg('เพิ่มแคนดิเดตแล้ว'); setCtab(f.typ); setF({ srf: '', pos: '', email: '', rec: f.rec, typ: f.typ }); load() }
+  }
+  async function setMeta(c, p) {
+    const { error } = await supabase.from('candidates').update(p).eq('id', c.id)
+    setMsg(error ? error.message : 'บันทึกแล้ว'); load()
   }
   async function upd(d, p) {
     const { error } = await supabase.from('documents').update(p).eq('id', d.id)
@@ -169,7 +189,7 @@ export default function Staff() {
     const bad = [], jobs = []
     if (!keep) setMsg('')
     setBz(c.id + k[0])
-    try { await genericJobs(k, files, bad, jobs) } catch { bad.push('ประมวลผลไฟล์ไม่ได้ ลองใหม่หรือใช้ไฟล์อื่น') }
+    try { await genericJobs(k, files, bad, jobs, async (f, wrong) => window.prompt((wrong ? 'รหัสไม่ถูกต้อง ลองอีกครั้ง\n' : '') + 'ไฟล์ ' + f.name + ' มีรหัสผ่าน กรอกรหัสเพื่อปลดล็อก (กดยกเลิกเพื่อข้ามไฟล์)')) } catch { bad.push('ประมวลผลไฟล์ไม่ได้ ลองใหม่หรือใช้ไฟล์อื่น') }
     const old = docs.find((d) => d.candidate_id === c.id && d.category === k[0])
     // recruiter-side files need no review step, so they are stored as already approved (they go into the Zip)
     // one file per category: a new file becomes the next revision and the old one stays in the history
@@ -194,7 +214,7 @@ export default function Staff() {
     setPg('review'); setRv(c.id)
   }
   function showCand(c) {
-    setPg('cands'); setFlt({ q: '', pos: '', st: 'all' }); setSel(c.id)
+    setPg('cands'); setFlt({ q: '', pos: '', st: 'all', rec: '' }); setCtab(typeKey(c)); setSel(c.id)
     setTimeout(() => document.getElementById('cand-' + c.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80)
   }
   const go = (k) => { setPg(k); setMsg(''); if (k !== 'review') setRv(null) }
@@ -202,7 +222,11 @@ export default function Staff() {
 
   const info = buildRows(cands, docs)
   const positions = [...new Set(cands.map((c) => c.position).filter(Boolean))].sort()
+  const recs = [...new Set(cands.map((c) => c.recruiter_name).filter(Boolean))].sort()
   const list = filterRows(info, flt)
+  const tabRows = info.filter((r) => typeKey(r.c) === ctab)   // Candidate List shows one type at a time
+  const tabList = filterRows(tabRows, flt)
+  const nSales = info.filter((r) => typeKey(r.c) === 'sales').length, nNon = info.filter((r) => typeKey(r.c) === 'non_sales').length, nNone = info.length - nSales - nNon
   const rvRow = rv && info.find((i) => i.c.id === rv)
   const filesWait = info.reduce((a, i) => a + i.w, 0), filesFix = info.reduce((a, i) => a + i.x, 0)
 
@@ -233,12 +257,20 @@ export default function Staff() {
                 <label className="f">อีเมลแคนดิเดต<input type="text" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} /></label>
                 <label className="f">เลข SRF<input type="text" value={f.srf} placeholder="002/2026" onChange={(e) => setF({ ...f, srf: e.target.value })} /></label>
                 <label className="f">ชื่อตำแหน่ง<input type="text" value={f.pos} onChange={(e) => setF({ ...f, pos: e.target.value })} /></label>
+                <label className="f">ชื่อ Recruiter ที่ดูแล<input type="text" list="recs" value={f.rec} placeholder="เช่น เบียร์" onChange={(e) => setF({ ...f, rec: e.target.value })} /></label>
+                <datalist id="recs">{recs.map((p) => <option key={p} value={p} />)}</datalist>
+                <div className="f">ประเภท
+                  <div className="ctl" style={{ marginTop: 6 }}>
+                    {TYPES.map(([k, t]) => <button type="button" key={k} className={'btn' + (f.typ === k ? ' pri' : '')} aria-pressed={f.typ === k} onClick={() => setF({ ...f, typ: k })}>{t}</button>)}
+                  </div>
+                </div>
               </div>
               <div style={{ marginTop: 12 }}><button className="btn pri" type="submit">เพิ่ม</button></div>
             </form>
           )}
 
           {pg === 'reports' && <Reports rows={info} />}
+          {pg === 'checker' && <PdfChecker />}
           {pg === 'bulk' && <BulkDownload rows={info} docs={docs} positions={positions} photos={photos} />}
 
           {pg === 'review' && (rvRow ? (
@@ -268,36 +300,49 @@ export default function Staff() {
 
           {pg === 'cands' && (
             <>
-              <div className="kpis">
-                <div className="kpi"><span className="sub">ผู้สมัครทั้งหมด</span><b>{cands.length}</b></div>
-                <div className="kpi"><span className="sub">Missing · ยังขาดเอกสารบังคับ (คน)</span><b>{info.filter((i) => i.miss.length).length}</b></div>
-                <div className="kpi"><span className="sub">ไฟล์รอตรวจ (Received + Pending)</span><b>{filesWait}</b></div>
-                <div className="kpi"><span className="sub">Revision Required (ไฟล์)</span><b>{filesFix}</b></div>
-                <div className="kpi"><span className="sub">เอกสารฝั่งแคนดิเดตครบ (คน)</span><b>{info.filter((i) => i.candDone).length}</b></div>
-                <div className="kpi"><span className="sub">เอกสารฝั่ง Recruiter ครบ (คน)</span><b>{info.filter((i) => i.recDone).length}</b></div>
-                <div className="kpi"><span className="sub">ครบทั้งสองฝั่ง (คน)</span><b>{info.filter((i) => i.both).length}</b></div>
+              <div className="tabs" role="tablist">
+                <button type="button" role="tab" aria-selected={ctab === 'sales'} className={'tab' + (ctab === 'sales' ? ' on' : '')} onClick={() => setCtab('sales')}>Sales <span>{nSales}</span></button>
+                <button type="button" role="tab" aria-selected={ctab === 'non_sales'} className={'tab' + (ctab === 'non_sales' ? ' on' : '')} onClick={() => setCtab('non_sales')}>Non-Sales <span>{nNon}</span></button>
+                {(nNone > 0 || ctab === 'none') && <button type="button" role="tab" aria-selected={ctab === 'none'} className={'tab' + (ctab === 'none' ? ' on' : '')} onClick={() => setCtab('none')}>ยังไม่ระบุประเภท <span>{nNone}</span></button>}
               </div>
-              <SearchFilter f={flt} setF={setFlt} positions={positions} />
-              <div className="hint" style={{ marginBottom: 10 }}>พบ {list.length} จาก {cands.length} คน</div>
-              {!list.length && <div className="panel">ไม่พบแคนดิเดตตามเงื่อนไข</div>}
-              {list.map((r) => {
+              <div className="kpis">
+                <div className="kpi"><span className="sub">ผู้สมัครในแท็บนี้</span><b>{tabRows.length}</b></div>
+                <div className="kpi"><span className="sub">Missing · ยังขาดเอกสารบังคับ (คน)</span><b>{tabRows.filter((i) => i.miss.length).length}</b></div>
+                <div className="kpi"><span className="sub">ไฟล์รอตรวจ (Received + Pending)</span><b>{tabRows.reduce((a, i) => a + i.w, 0)}</b></div>
+                <div className="kpi"><span className="sub">Revision Required (ไฟล์)</span><b>{tabRows.reduce((a, i) => a + i.x, 0)}</b></div>
+                <div className="kpi"><span className="sub">เอกสารฝั่งแคนดิเดตครบ (คน)</span><b>{tabRows.filter((i) => i.candDone).length}</b></div>
+                <div className="kpi"><span className="sub">เอกสารฝั่ง Recruiter ครบ (คน)</span><b>{tabRows.filter((i) => i.recDone).length}</b></div>
+                <div className="kpi"><span className="sub">ครบทั้งสองฝั่ง (คน)</span><b>{tabRows.filter((i) => i.both).length}</b></div>
+              </div>
+              <SearchFilter f={flt} setF={setFlt} positions={positions} recs={recs} />
+              <div className="hint" style={{ marginBottom: 10 }}>พบ {tabList.length} จาก {tabRows.length} คน</div>
+              {!tabList.length && <div className="panel">ไม่พบแคนดิเดตตามเงื่อนไข</div>}
+              {tabList.map((r) => {
                 const { c, m, mr, n, miss, rn, rmiss } = r, open = sel === c.id
                 return (
                   <section className="panel" key={c.id} id={'cand-' + c.id}>
                     <div className="row" onClick={() => setSel(open ? null : c.id)}>
                       <div style={{ display: 'flex', gap: 12, alignItems: 'center', minWidth: 0 }}>
                         <Avatar url={photos[c.id]} name={c.first_name ? base(c) : ''} size={46} />
-                        <div style={{ minWidth: 0 }}><b>{base(c)}</b><div className="sub">{c.position} · SRF {c.srf_no} · {c.email}</div></div>
+                        <div style={{ minWidth: 0 }}>
+                          <b>{base(c)}</b>
+                          <div className="sub">{c.position} · SRF {c.srf_no}</div>
+                          <div className="sub">{c.email}{c.recruiter_name ? ' · Recruiter: ' + c.recruiter_name : ''}</div>
+                        </div>
                       </div>
                       <div className="rr">
-                        <span className={'tag ' + (miss.length ? '' : 'ok')}>แคนดิเดตส่งแล้ว {n - miss.length}/{n}</span>{' '}
-                        <span className={'tag ' + (rmiss.length ? '' : 'ok')}>Recruiter {rn - rmiss.length}/{rn}</span>{' '}
-                        {r.candDone && <span className="tag ok">แคนดิเดตครบ ✓</span>}{' '}{r.recDone && <span className="tag ok">Recruiter ครบ ✓</span>}{' '}{c.offer_made && <span className="tag n">ส่งให้ Hiring แล้ว</span>}{' '}
+                        <span className={'tag ' + (miss.length ? '' : 'ok')}>{r.candDone ? '✓ ' : ''}แคนดิเดต {n - miss.length}/{n}</span>{' '}
+                        <span className={'tag ' + (rmiss.length ? '' : 'ok')}>{r.recDone ? '✓ ' : ''}Recruiter {rn - rmiss.length}/{rn}</span>{' '}
+                        {c.offer_made && <span className="tag n">ส่งให้ Hiring แล้ว</span>}{' '}
                         <Tags r={r} />
                       </div>
                     </div>
-                    {miss.length > 0 && <div className="err">Missing (บังคับ): {miss.map(lbl).join(' · ')}</div>}
-                    {rmiss.length > 0 && <div className="err">ฝั่ง Recruiter ยังขาด (บังคับ): {rmiss.map(rlbl).join(' · ')}</div>}
+                    {(miss.length > 0 || rmiss.length > 0) && (
+                      <div className="mgs">
+                        {miss.length > 0 && <MissChips label="แคนดิเดตยังขาด" items={miss.map((k) => [lblS(k), lbl(k)])} />}
+                        {rmiss.length > 0 && <MissChips label="Recruiter ยังขาด" items={rmiss.map((k) => [rlblS(k), rlbl(k)])} />}
+                      </div>
+                    )}
                     {open && (
                       <>
                         <div className="srf">
@@ -306,6 +351,14 @@ export default function Staff() {
                             <div className="sub">SRF {c.srf_no}</div>
                             <div className="nm">{c.first_name ? base(c) : 'ยังไม่ได้กรอกชื่อ'}</div>
                             <div className="sub">{c.position} · {c.email}</div>
+                            <div className="ctl" style={{ marginTop: 6 }} onClick={(e) => e.stopPropagation()}>
+                              <label className="f" style={{ margin: 0 }}>Recruiter ที่ดูแล
+                                <input type="text" list="recs" defaultValue={c.recruiter_name || ''} key={c.id + ':' + (c.recruiter_name || '')} onBlur={(e) => e.target.value.trim() !== (c.recruiter_name || '') && setMeta(c, { recruiter_name: e.target.value.trim() })} /></label>
+                              <label className="f" style={{ margin: 0 }}>ประเภท
+                                <select value={c.sales_type || ''} onChange={(e) => setMeta(c, { sales_type: e.target.value || null })}>
+                                  <option value="">— ยังไม่ระบุ —</option>{TYPES.map(([k, t]) => <option key={k} value={k}>{t}</option>)}
+                                </select></label>
+                            </div>
                             <div className="meta">
                               <span className="tag n">{STAGE_NAME[stageOf(c, [...m, ...mr])]}</span>
                               {!photos[c.id] && <span className="tag g">ยังไม่มีรูปถ่าย</span>}

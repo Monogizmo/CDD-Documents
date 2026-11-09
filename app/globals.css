@@ -138,3 +138,21 @@ input[type=text]:focus,select:focus{outline:2px solid var(--pri);outline-offset:
   .fun .bx{min-height:34px}
   .overlay{padding:8px}
 }
+
+/* PDF Checker */
+.pcr{display:flex;gap:8px;align-items:flex-start;padding:5px 0;font-size:13px}.pcr small{display:block;color:var(--mute)}
+.pcm{flex:none;width:20px;height:20px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:700;background:var(--prib);color:var(--ink)}
+.pcm.ok{background:#dff3e6;color:#17693a}.pcm.wn{background:#fff1cc;color:#8a5a00}.pcm.er{background:#fde0e0;color:#a32020}
+details summary{cursor:pointer;margin:8px 0;font-weight:600}
+
+/* Candidate List: Sales / Non-Sales tabs and compact missing-document chips */
+.tabs{display:flex;gap:6px;margin:0 0 12px;border-bottom:2px solid var(--line);overflow-x:auto}
+.tab{flex:none;border:0;background:none;padding:10px 16px;font:700 15px inherit;color:var(--mute);cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px}
+.tab span{display:inline-block;min-width:22px;padding:0 6px;margin-left:4px;border-radius:999px;background:var(--bg);font-size:12px;text-align:center}
+.tab.on{color:var(--ink);border-bottom-color:var(--pri)}.tab.on span{background:var(--pri);color:var(--onpri)}
+.mgs{margin-top:8px;padding-top:8px;border-top:1px dashed var(--line)}
+.mg{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:6px}
+.ml{font-size:12.5px;font-weight:700;color:var(--mute);min-width:112px}
+.mc{background:#fdeceb;color:#b3261e;border:0;border-radius:999px;padding:3px 10px;font:600 12.5px inherit}
+.mc.more{background:var(--bg);color:var(--mute);cursor:pointer}
+@media(max-width:860px){.ml{min-width:100%}.tab{padding:10px 12px}}

@@ -58,3 +58,14 @@ Run `007_other_doc_title.sql` after 006. The title typed after upload becomes th
 - Bulk upload reads the CONTENT when the file name says nothing: PDF text layer first, OCR (Thai + English, `lib/readdoc.js`) for scans/photos. Keyword rules: `TEXT_RULES` in `lib/classify.js`. OCR language data is ~10 MB on first use.
 - HR: "complete" is tracked per side (candidate Verified / recruiter checklist / both). Mobile bottom tab bar.
 - `/hiring`: Hiring role signs in with email OTP, sees only candidates marked "ส่งให้ Hiring รับเอกสาร" (button on the staff candidate card, `offer_made`) and only Verified files. Add Hiring emails to the `staff` table with role `hiring`.
+
+## Update 010: PDF Checker tab, pay slip flattening
+- New recruiter tab "PDF Checker & Automation Prep" (`components/PdfChecker.js`, `lib/pdfcheck.js`, ported from HR Document Hub). Runs fully in the browser. New dependency: `pdf-lib` (run `npm install` / redeploy).
+- Pay slips (category PS) uploaded by candidates: PDFs are redrawn as pictures and saved as a new PDF (`flattenPdf` in `lib/pdf.js`, called from `genericJobs`); pictures become a PDF as before. Real password-protected files are refused with a message.
+- Receipt (2-7) is optional again.
+
+## Update 011: locked PDFs, Recruiter + Sales/Non-Sales, tidier list
+- Run `supabase/migrations/010_recruiter_sales_type.sql` (adds `recruiter_name`, `sales_type`; candidates cannot edit them).
+- Locked PDF uploaded by a candidate: the portal asks for the file's password (3 tries), unlocks it in the browser (page re-drawn as a new PDF) and uploads the unlocked copy. The password is never sent or stored. Recruiter uploads use a simple prompt.
+- Add Candidate asks for the Recruiter name and Sales / Non-Sales. Candidate List has Sales / Non-Sales tabs (plus "not set" for older candidates) and a Recruiter filter; type and recruiter can be edited inside the opened card.
+- Missing documents are shown as small chips ("2-7 Receipt") with a "+N" toggle instead of one long red line.
