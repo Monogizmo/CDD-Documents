@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { supabase } from '../../lib/supabase'
-import { CATS, RCATS, RC, AOU, REHIRE, rlbl, rreq, okR, nm, base, fname, lbl, fdt } from '../../lib/categories'
+import { CATS, RCATS, RC, AOU, REHIRE, rlbl, rreq, okR, nm, base, fname, lbl, fdt, redactTxt } from '../../lib/categories'
 import { BUCKET, genericJobs, storeJobs } from '../../lib/upload'
 import { parseAou, parseRehire } from '../../lib/classify'
 import { DS, docStatus, chainOf } from '../../lib/status'
@@ -34,12 +34,12 @@ const Shell = ({ children, right }) => (
 )
 const Ic = ({ d }) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={d} /></svg>
 const NAV = [
-  ['dash', 'Dashboard', 'M3 3h7v9H3zM14 3h7v5h-7zM14 12h7v9h-7zM3 16h7v5H3z'],
-  ['cands', 'Candidate List', 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8'],
-  ['review', 'Document Review', 'M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11'],
-  ['bulk', 'Bulk Download', 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3'],
-  ['reports', 'Reports', 'M18 20V10M12 20V4M6 20v-6'],
-  ['add', 'เพิ่มแคนดิเดต', 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M19 8v6M22 11h-6'],
+  ['dash', 'Dashboard', 'M3 3h7v9H3zM14 3h7v5h-7zM14 12h7v9h-7zM3 16h7v5H3z', 'Home'],
+  ['cands', 'Candidate List', 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8', 'คนสมัคร'],
+  ['review', 'Document Review', 'M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11', 'ตรวจ'],
+  ['bulk', 'Bulk Download', 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3', 'โหลด'],
+  ['reports', 'Reports', 'M18 20V10M12 20V4M6 20v-6', 'รายงาน'],
+  ['add', 'เพิ่มแคนดิเดต', 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M19 8v6M22 11h-6', 'เพิ่ม'],
 ]
 const TITLE = Object.fromEntries(NAV.map((n) => [n[0], n[1]]))
 const titleBox = (d, upd) => <input type="text" defaultValue={d.title} placeholder="ไฟล์นี้เกี่ยวกับอะไร (ใช้เป็นชื่อไฟล์) เช่น สรุปสำนวนคดี" maxLength={80} onBlur={(e) => e.target.value.trim() !== (d.title || '') && upd(d, { title: e.target.value.trim() })} />
@@ -98,7 +98,7 @@ export default function Staff() {
   if (!ses) return <Shell><OtpLogin title="สำหรับเจ้าหน้าที่ HR" /><CodeLogin /></Shell>
   if (role === null) return <Shell right={out}>กำลังโหลด...</Shell>
   if (role !== 'admin' && role !== 'recruiter')
-    return <Shell right={out}><div className="panel">อีเมลนี้ยังไม่มีสิทธิ์ใช้งานหน้านี้</div></Shell>
+    return <Shell right={out}><div className="panel">{role === 'hiring' ? <>บัญชีนี้เป็นทีม Hiring · ไปที่ <a href="/hiring">หน้ารับเอกสารของ Hiring</a></> : 'อีเมลนี้ยังไม่มีสิทธิ์ใช้งานหน้านี้'}</div></Shell>
 
   async function add(e) {
     e.preventDefault()
@@ -107,13 +107,13 @@ export default function Staff() {
   }
   async function upd(d, p) {
     const { error } = await supabase.from('documents').update(p).eq('id', d.id)
-    setMsg(error ? (/ID card/.test(error.message) ? 'บัตรประชาชนต้องปิดบังข้อมูลด้วยเครื่องมือและผ่านการตรวจของ HR ก่อนอนุมัติ ไฟล์นี้อนุมัติไม่ได้ ให้ส่ง Revision Required เพื่ออัปโหลดใหม่' : error.message) : '')
+    setMsg(error ? (/ID card/.test(error.message) ? 'บัตรประชาชนต้องผ่านการตรวจไฟล์สุดท้ายของ HR ก่อนอนุมัติ' : error.message) : '')
     load()
   }
   // Review Center actions. status: 'ok' = Approve · 'fix' = Request Revision (note required) · 'wait' = undo
   async function review(d, status, note = '') {
     if (status === 'ok' && d.category === '2.1') {
-      if (!confirm('ยืนยันว่าตรวจไฟล์สุดท้ายแล้ว และไม่พบศาสนาและหมู่โลหิตบนบัตร?')) return
+      if (!confirm('ยืนยันว่าตรวจไฟล์สุดท้ายแล้ว และไม่พบศาสนาและหมู่โลหิตบนบัตร (หรือบัตรไม่มีข้อมูลนี้)?')) return
       return upd(d, { status: 'ok', note: '', redaction_checked_at: new Date().toISOString(), redaction_checked_by: ses.user.email })
     }
     if (status === 'fix' && !note.trim()) { setMsg('กรุณาระบุเหตุผลที่ต้องแก้ไข'); return }
@@ -145,6 +145,13 @@ export default function Staff() {
     if (p.length) await supabase.storage.from(BUCKET).remove(p)
     await supabase.from('candidates').delete().eq('id', c.id); setSel(null); load()
   }
+  // Hiring (/hiring) sees only candidates with offer_made = true, and only Verified files
+  async function setOffer(c, v) {
+    if (v && !confirm('ส่งแคนดิเดตนี้ให้ Hiring รับเอกสาร?' + (candOk(c) ? '' : '\n\nหมายเหตุ: เอกสารยังไม่ครบทั้งสองฝั่ง Hiring จะเห็นเฉพาะไฟล์ที่ Verified แล้ว'))) return
+    const { error } = await supabase.from('candidates').update({ offer_made: v }).eq('id', c.id)
+    setMsg(error ? error.message : v ? 'ส่งให้ Hiring แล้ว' : 'ยกเลิกการส่งให้ Hiring แล้ว'); load()
+  }
+  const candOk = (c) => info.find((i) => i.c.id === c.id)?.both
   async function zip(c) {
     const list = eligible(c, docs, 'verified', true)
     if (!list.length) { setMsg('ยังไม่มีไฟล์ที่ Verified'); return }
@@ -210,7 +217,8 @@ export default function Staff() {
     <Shell right={out}>
       <div className="app">
         <nav className="side" aria-label="เมนู">
-          {NAV.map(([k, t, d]) => <button type="button" key={k} className={'nav' + (pg === k ? ' on' : '')} onClick={() => go(k)}><Ic d={d} />{t}</button>)}
+          {NAV.map(([k, t, d, s]) => <button type="button" key={k} className={'nav' + (pg === k ? ' on' : '')} onClick={() => go(k)}><Ic d={d} /><span className="lf">{t}</span><span className="ls">{s}</span></button>)}
+          <a className="nav hl" href="/hiring"><Ic d="M4 4h16v16H4zM9 9h6M9 13h6M9 17h3" /><span className="lf">หน้า Hiring</span><span className="ls">Hiring</span></a>
         </nav>
         <div className="main">
           {msg && <div className="err" style={{ marginBottom: 10 }}>{msg}</div>}
@@ -248,7 +256,7 @@ export default function Staff() {
                       <Avatar url={photos[r.c.id]} name={r.c.first_name ? base(r.c) : ''} size={46} />
                       <div style={{ minWidth: 0 }}><b>{nameOf(r.c)}</b><div className="sub">{r.c.position} · SRF {r.c.srf_no}</div></div>
                     </div>
-                    <div style={{ textAlign: 'right' }}>
+                    <div className="rr">
                       <Tags r={r} /> <span className="tag ok">Verified {r.m.filter((d) => d.status === 'ok').length}</span>{' '}
                       <button type="button" className="btn pri sm" onClick={() => setRv(r.c.id)}>เปิด Review Center</button>
                     </div>
@@ -265,6 +273,9 @@ export default function Staff() {
                 <div className="kpi"><span className="sub">Missing · ยังขาดเอกสารบังคับ (คน)</span><b>{info.filter((i) => i.miss.length).length}</b></div>
                 <div className="kpi"><span className="sub">ไฟล์รอตรวจ (Received + Pending)</span><b>{filesWait}</b></div>
                 <div className="kpi"><span className="sub">Revision Required (ไฟล์)</span><b>{filesFix}</b></div>
+                <div className="kpi"><span className="sub">เอกสารฝั่งแคนดิเดตครบ (คน)</span><b>{info.filter((i) => i.candDone).length}</b></div>
+                <div className="kpi"><span className="sub">เอกสารฝั่ง Recruiter ครบ (คน)</span><b>{info.filter((i) => i.recDone).length}</b></div>
+                <div className="kpi"><span className="sub">ครบทั้งสองฝั่ง (คน)</span><b>{info.filter((i) => i.both).length}</b></div>
               </div>
               <SearchFilter f={flt} setF={setFlt} positions={positions} />
               <div className="hint" style={{ marginBottom: 10 }}>พบ {list.length} จาก {cands.length} คน</div>
@@ -278,9 +289,10 @@ export default function Staff() {
                         <Avatar url={photos[c.id]} name={c.first_name ? base(c) : ''} size={46} />
                         <div style={{ minWidth: 0 }}><b>{base(c)}</b><div className="sub">{c.position} · SRF {c.srf_no} · {c.email}</div></div>
                       </div>
-                      <div style={{ textAlign: 'right' }}>
+                      <div className="rr">
                         <span className={'tag ' + (miss.length ? '' : 'ok')}>แคนดิเดตส่งแล้ว {n - miss.length}/{n}</span>{' '}
                         <span className={'tag ' + (rmiss.length ? '' : 'ok')}>Recruiter {rn - rmiss.length}/{rn}</span>{' '}
+                        {r.candDone && <span className="tag ok">แคนดิเดตครบ ✓</span>}{' '}{r.recDone && <span className="tag ok">Recruiter ครบ ✓</span>}{' '}{c.offer_made && <span className="tag n">ส่งให้ Hiring แล้ว</span>}{' '}
                         <Tags r={r} />
                       </div>
                     </div>
@@ -304,6 +316,7 @@ export default function Staff() {
                         <div className="ctl" style={{ marginTop: 12 }}>
                           <button className="btn pri" onClick={() => { setPg('review'); setRv(c.id) }}>เปิด Review Center</button>
                           <button className="btn" onClick={() => zip(c)}>โหลด Zip (Verified)</button>
+                          <button className={'btn' + (c.offer_made ? '' : ' pri')} onClick={() => setOffer(c, !c.offer_made)}>{c.offer_made ? 'ยกเลิกการส่งให้ Hiring' : 'ส่งให้ Hiring รับเอกสาร'}</button>
                           <button className="btn" onClick={() => delCand(c)}>ลบแคนดิเดต</button>
                         </div>
                         <div style={{ marginTop: 12 }}><Stepper c={c} docs={docs} rdone={!rmiss.length} /></div>
@@ -384,7 +397,7 @@ export default function Staff() {
                                 <li key={d.id}>
                                   <div className="fl"><span>{fname(c, d, m)} {d.rev > 1 && <span className="tag n">v{d.rev}</span>}</span><span className={'tag ' + DS[s][2]}>{DS[s][0]}</span></div>
                                   <div className="hint">อัปเดต {fdt(d.updated_at)}
-                                    {d.category === '2.1' && (d.redaction === 'tool' ? ` · ปิดบังด้วยเครื่องมือ ${d.redaction_boxes || ''} จุด${d.redaction_checked_at ? ' · HR ตรวจแล้ว (' + d.redaction_checked_by + ')' : ' · รอ HR ตรวจไฟล์สุดท้าย'}` : ' · ไม่ผ่านเครื่องมือปิดบัง อนุมัติไม่ได้')}</div>
+                                    {d.category === '2.1' && ` · ${redactTxt(d)}${d.redaction_checked_at ? ' · HR ตรวจแล้ว (' + d.redaction_checked_by + ')' : ' · รอ HR ตรวจไฟล์สุดท้าย'}`}</div>
                                   {d.status === 'fix' && <div className="err">เหตุผล: {d.note}</div>}
                                   <div className="ctl">
                                     <button className="btn sm" onClick={() => view(d)}>เปิดดู</button>

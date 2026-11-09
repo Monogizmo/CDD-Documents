@@ -13,7 +13,11 @@ export default function Stepper({ c, docs, rdone }) {
   const steps = [
     { t: 'ส่งเอกสาร', d: `${sent}/${r.length} หมวดบังคับ`, done: sent === r.length },
     { t: 'HR ตรวจสอบ', d: fix ? `Revision Required ${fix} ไฟล์` : `Verified ${passed}/${r.length}`, done: checked, warn: fix > 0 },
-    { t: 'เอกสารครบถ้วน', d: all ? 'ครบถ้วนแล้ว' : checked ? 'รอเอกสารฝั่ง Recruiter' : 'รอขั้นตอนก่อนหน้า', done: all },
+    ...(rdone === undefined
+      ? [{ t: 'เอกสารครบถ้วน', d: checked ? 'ครบถ้วนแล้ว' : 'รอขั้นตอนก่อนหน้า', done: checked }]
+      // HR view: the two sides are tracked separately
+      : [{ t: 'ฝั่ง Recruiter', d: rdone ? 'เอกสารครบ' : 'ยังไม่ครบ', done: rdone },
+         { t: 'ครบทั้งสองฝั่ง', d: all ? 'ครบถ้วนแล้ว' : 'รอ ' + [!checked && 'ฝั่งแคนดิเดต', !rdone && 'ฝั่ง Recruiter'].filter(Boolean).join(' และ '), done: all }]),
   ]
   const cur = steps.findIndex((s) => !s.done)
   return (

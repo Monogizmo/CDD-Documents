@@ -12,7 +12,7 @@ export default function Dashboard({ rows, photos, onOpen, onZip, now = new Date(
   const total = rows.length
   const sent = rows.reduce((a, r) => a + (r.n - r.miss.length), 0), need = rows.reduce((a, r) => a + r.n, 0)
   const pct = need ? Math.round((sent / need) * 100) : 0
-  const ready = rows.filter((r) => r.stage === 'complete').length
+  const ready = rows.filter((r) => r.both).length, cdone = rows.filter((r) => r.candDone).length, rdone = rows.filter((r) => r.recDone).length
   const waiting = rows.reduce((a, r) => a + r.w, 0), fix = rows.reduce((a, r) => a + r.x, 0)
 
   // new candidates per week (last 8 weeks) and per month (last 12 months)
@@ -48,7 +48,9 @@ export default function Dashboard({ rows, photos, onOpen, onZip, now = new Date(
             <div className="ph">ผู้สมัครทั้งหมด</div>
             <div className="big">{total}</div>
             <div className="bar" style={{ marginTop: 8 }}><i style={{ width: (total ? (ready / total) * 100 : 0) + '%' }} /></div>
-            <div className="sub">เอกสารครบแล้ว {ready} คน</div>
+            <div className="sub">เอกสารฝั่งแคนดิเดตครบ {cdone} คน</div>
+            <div className="sub">เอกสารฝั่ง Recruiter ครบ {rdone} คน</div>
+            <div className="sub"><b style={{ color: 'var(--ink)' }}>ครบทั้งสองฝั่ง {ready} คน</b></div>
           </div>
         </div>
         <div className="panel s3">

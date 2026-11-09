@@ -51,7 +51,7 @@ export default function BulkDownload({ rows, docs, positions, photos }) {
           <button type="button" className="btn pri" disabled={busy || !chosen.length} onClick={run}>{busy ? 'กำลังทำงาน...' : `ดาวน์โหลด (${chosen.length} คน)`}</button>
         </div>
         {msg && <div className="hint" style={{ marginTop: 8 }}>{msg}</div>}
-        <div className="hint">บัตรประชาชนจะรวมให้เมื่อผ่านเครื่องมือปิดบังข้อมูลและ HR ตรวจไฟล์สุดท้ายแล้วเท่านั้น · ถ้าเลือกแยก Zip ต่อคน บราวเซอร์อาจขอสิทธิ์ดาวน์โหลดหลายไฟล์</div>
+        <div className="hint">บัตรประชาชนจะรวมให้เมื่อ HR ตรวจไฟล์สุดท้ายแล้วเท่านั้น · ถ้าเลือกแยก Zip ต่อคน บราวเซอร์อาจขอสิทธิ์ดาวน์โหลดหลายไฟล์</div>
         <div className="scroll"><table className="tbl">
           <thead><tr><th><input type="checkbox" checked={all} aria-label="เลือกทั้งหมด" onChange={(e) => setSel(Object.fromEntries(list.map((r) => [r.c.id, e.target.checked])))} /></th><th>ผู้สมัคร</th><th>SRF</th><th>ตำแหน่ง</th><th>ไฟล์ที่โหลดได้</th></tr></thead>
           <tbody>

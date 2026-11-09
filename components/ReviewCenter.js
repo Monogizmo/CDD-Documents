@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { BUCKET } from '../lib/upload'
-import { req, nm, base, fname, fdt } from '../lib/categories'
+import { req, nm, base, fname, fdt, redactTxt } from '../lib/categories'
 import { DS, docStatus, catStatus, chainOf } from '../lib/status'
 import Avatar from './Avatar'
 import Fold from './Fold'
@@ -39,7 +39,7 @@ function DocCard({ d, c, m, chain, events, urls, onReview, onComment, onOpened }
         <span style={{ whiteSpace: 'nowrap' }}>{d.rev > 1 && <span className="tag n">v{d.rev}</span>} <Tag s={s} /></span>
       </div>
       <div className="hint">{d.original_name} · อัปเดต {fdt(d.updated_at || d.created_at)}
-        {d.category === '2.1' && (d.redaction === 'tool' ? ` · ปิดบังด้วยเครื่องมือ ${d.redaction_boxes || ''} จุด${d.redaction_checked_at ? ' · HR ตรวจแล้ว' : ' · รอ HR ตรวจไฟล์สุดท้าย'}` : ' · ไม่ผ่านเครื่องมือปิดบัง อนุมัติไม่ได้')}</div>
+        {d.category === '2.1' && ` · ${redactTxt(d)}${d.redaction_checked_at ? ' · HR ตรวจแล้ว' : ' · รอ HR ตรวจไฟล์สุดท้าย'}`}</div>
       {d.status === 'fix' && <div className="err">เหตุผลที่ขอแก้ไข: {d.note || '-'}</div>}
       {!latest && <div className="err">กำลังดูไฟล์ฉบับเก่า (v{file.rev}) การตรวจมีผลกับฉบับล่าสุดเท่านั้น</div>}
       <div className="pv">

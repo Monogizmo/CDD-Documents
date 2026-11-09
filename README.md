@@ -49,3 +49,12 @@ Run `007_other_doc_title.sql` after 006. The title typed after upload becomes th
 - Status words (lib/status.js): Missing / Received (not opened by HR yet) / Pending (opened, no decision) / Verified / Revision Required.
 - HR menu: Dashboard, Candidate List, Document Review (Review Center), Bulk Download, Reports, Add Candidate.
 - The status bar and pipeline now stop at "documents complete" (no contract signing / ready-to-start). Columns signed_at / ready_at stay in the DB but are unused.
+
+## Update 009: optional redaction, scan, Hiring page, content-based sorting
+- Run `supabase/migrations/009_redaction_optional_hiring.sql` after 001-008, then `npm install` (adds `tesseract.js`).
+- ID card: redaction is optional. Candidate either ticks "already redacted / nothing to redact" (`redaction = 'self'`) or uses the tool (zoom + draw/pan modes, `redaction = 'tool'`). HR still does the final check before approving.
+- Receipt (2-7) is required. Bank book hint: online version OK, account must be active. Gender shows เพศหญิง when not male.
+- Scanner (`components/Scanner.js`, `lib/scan.js`): camera/album -> drag 4 corners -> clean-up filter -> several pages -> one PDF. Photo category uses the plain camera.
+- Bulk upload reads the CONTENT when the file name says nothing: PDF text layer first, OCR (Thai + English, `lib/readdoc.js`) for scans/photos. Keyword rules: `TEXT_RULES` in `lib/classify.js`. OCR language data is ~10 MB on first use.
+- HR: "complete" is tracked per side (candidate Verified / recruiter checklist / both). Mobile bottom tab bar.
+- `/hiring`: Hiring role signs in with email OTP, sees only candidates marked "ส่งให้ Hiring รับเอกสาร" (button on the staff candidate card, `offer_made`) and only Verified files. Add Hiring emails to the `staff` table with role `hiring`.

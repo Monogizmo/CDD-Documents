@@ -1,13 +1,18 @@
 {
   "name": "cdd-portal",
   "private": true,
-  "scripts": { "dev": "next dev", "build": "next build", "start": "next start" },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",
     "jszip": "^3.10.1",
     "pdfjs-dist": "4.10.38",
     "next": "^15.0.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "tesseract.js": "^5.1.1"
   }
 }

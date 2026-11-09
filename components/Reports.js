@@ -17,18 +17,20 @@ export default function Reports({ rows }) {
   }))
   const byPos = {}
   rows.forEach((r) => {
-    const p = (byPos[r.c.position] = byPos[r.c.position] || { n: 0, done: 0, sent: 0, need: 0 })
-    p.n++; if (r.stage === 'complete') p.done++; p.sent += r.n - r.miss.length; p.need += r.n
+    const p = (byPos[r.c.position] = byPos[r.c.position] || { n: 0, done: 0, cd: 0, rd: 0, sent: 0, need: 0 })
+    p.n++; if (r.both) p.done++; if (r.candDone) p.cd++; if (r.recDone) p.rd++; p.sent += r.n - r.miss.length; p.need += r.n
   })
   const pct = (r) => (r.n ? Math.round(((r.n - r.miss.length) / r.n) * 100) : 0)
-  const head = ['ชื่อ', 'อีเมล', 'SRF', 'ตำแหน่ง', 'ส่งเอกสารบังคับ', 'ขาดเอกสารบังคับ', 'Received', 'Pending', 'Verified', 'Revision Required', 'Recruiter ครบ', 'ขั้นตอน']
-  const lines = rows.map((r) => [base(r.c), r.c.email, r.c.srf_no, r.c.position, `${r.n - r.miss.length}/${r.n}`, r.miss.map((k) => nm(k[0]) + k[1]).join(' | '), r.rc, r.pd, r.m.filter((d) => d.status === 'ok').length, r.x, `${r.rn - r.rmiss.length}/${r.rn}`, r.stage])
-  const total = rows.length, done = rows.filter((r) => r.stage === 'complete').length
+  const head = ['ชื่อ', 'อีเมล', 'SRF', 'ตำแหน่ง', 'ส่งเอกสารบังคับ', 'ขาดเอกสารบังคับ', 'Received', 'Pending', 'Verified', 'Revision Required', 'แคนดิเดตครบ (Verified)', 'Recruiter ครบ', 'ครบทั้งสองฝั่ง', 'ขั้นตอน']
+  const lines = rows.map((r) => [base(r.c), r.c.email, r.c.srf_no, r.c.position, `${r.n - r.miss.length}/${r.n}`, r.miss.map((k) => nm(k[0]) + k[1]).join(' | '), r.rc, r.pd, r.m.filter((d) => d.status === 'ok').length, r.x, `${r.rn - r.rmiss.length}/${r.rn}`, r.candDone ? 'ครบ' : 'ยังไม่ครบ', r.recDone ? 'ครบ' : 'ยังไม่ครบ', r.both ? 'ครบ' : 'ยังไม่ครบ', r.stage])
+  const total = rows.length, done = rows.filter((r) => r.both).length, cdone = rows.filter((r) => r.candDone).length, rdone = rows.filter((r) => r.recDone).length
   return (
     <>
       <div className="kpis">
         <div className="kpi"><span className="sub">ผู้สมัครทั้งหมด</span><b>{total}</b></div>
-        <div className="kpi"><span className="sub">เอกสารครบถ้วน</span><b>{done}</b></div>
+        <div className="kpi"><span className="sub">เอกสารฝั่งแคนดิเดตครบ</span><b>{cdone}</b></div>
+        <div className="kpi"><span className="sub">เอกสารฝั่ง Recruiter ครบ</span><b>{rdone}</b></div>
+        <div className="kpi"><span className="sub">ครบทั้งสองฝั่ง</span><b>{done}</b></div>
         <div className="kpi"><span className="sub">มีไฟล์ Revision Required</span><b>{rows.filter((r) => r.x).length}</b></div>
         <div className="kpi"><span className="sub">ยังขาดเอกสารบังคับ</span><b>{rows.filter((r) => r.miss.length).length}</b></div>
       </div>
@@ -54,15 +56,15 @@ export default function Reports({ rows }) {
       <div className="panel">
         <b>แยกตามตำแหน่ง</b>
         <div className="scroll"><table className="tbl">
-          <thead><tr><th>ตำแหน่ง</th><th>ผู้สมัคร</th><th>เอกสารครบถ้วน</th><th>ความคืบหน้าเอกสารบังคับ</th></tr></thead>
-          <tbody>{Object.entries(byPos).map(([p, v]) => <tr key={p}><td>{p}</td><td>{v.n}</td><td>{v.done}</td><td style={{ minWidth: 140 }}><div className="bar"><i style={{ width: (v.need ? (v.sent / v.need) * 100 : 0) + '%' }} /></div>{v.need ? Math.round((v.sent / v.need) * 100) : 0}%</td></tr>)}</tbody>
+          <thead><tr><th>ตำแหน่ง</th><th>ผู้สมัคร</th><th>ฝั่งแคนดิเดตครบ</th><th>ฝั่ง Recruiter ครบ</th><th>ครบทั้งสองฝั่ง</th><th>ความคืบหน้าเอกสารบังคับ</th></tr></thead>
+          <tbody>{Object.entries(byPos).map(([p, v]) => <tr key={p}><td>{p}</td><td>{v.n}</td><td>{v.cd}</td><td>{v.rd}</td><td>{v.done}</td><td style={{ minWidth: 140 }}><div className="bar"><i style={{ width: (v.need ? (v.sent / v.need) * 100 : 0) + '%' }} /></div>{v.need ? Math.round((v.sent / v.need) * 100) : 0}%</td></tr>)}</tbody>
         </table></div>
       </div>
       <div className="panel">
         <div className="fl"><b>รายคน</b><button type="button" className="btn sm" onClick={() => saveBlob(new Blob([csv([head, ...lines])], { type: 'text/csv;charset=utf-8' }), `report-${new Date().toISOString().slice(0, 10)}.csv`)}>Export CSV</button></div>
         <div className="scroll"><table className="tbl">
-          <thead><tr><th>ชื่อ</th><th>SRF</th><th>ตำแหน่ง</th><th>เอกสารบังคับ</th><th>Received</th><th>Pending</th><th>Revision</th><th>Recruiter</th></tr></thead>
-          <tbody>{rows.map((r) => <tr key={r.c.id}><td>{r.c.first_name ? base(r.c) : r.c.email}</td><td>{r.c.srf_no}</td><td>{r.c.position}</td><td>{pct(r)}% ({r.n - r.miss.length}/{r.n})</td><td>{r.rc}</td><td>{r.pd}</td><td>{r.x ? <span className="tag bad">{r.x}</span> : 0}</td><td>{r.rn - r.rmiss.length}/{r.rn}</td></tr>)}</tbody>
+          <thead><tr><th>ชื่อ</th><th>SRF</th><th>ตำแหน่ง</th><th>เอกสารบังคับ</th><th>Received</th><th>Pending</th><th>Revision</th><th>แคนดิเดต</th><th>Recruiter</th></tr></thead>
+          <tbody>{rows.map((r) => <tr key={r.c.id}><td>{r.c.first_name ? base(r.c) : r.c.email}</td><td>{r.c.srf_no}</td><td>{r.c.position}</td><td>{pct(r)}% ({r.n - r.miss.length}/{r.n})</td><td>{r.rc}</td><td>{r.pd}</td><td>{r.x ? <span className="tag bad">{r.x}</span> : 0}</td><td>{r.candDone ? <span className="tag ok">ครบ</span> : <span className="tag g">ยังไม่ครบ</span>}</td><td>{r.recDone ? <span className="tag ok">ครบ ({r.rn}/{r.rn})</span> : <span className="tag">{r.rn - r.rmiss.length}/{r.rn}</span>}</td></tr>)}</tbody>
         </table></div>
       </div>
     </>
