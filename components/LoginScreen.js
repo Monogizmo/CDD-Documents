@@ -2,10 +2,10 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 
-// One login screen for the three entrances. Desktop: brand story on the left, sign-in on the right.
-// Phone: a short brand header on top (about 28% of the screen), the form below.
+// One login screen for the three entrances. Desktop: brand panel (Krungsri yellow) on the left, sign-in on the right, always inside one screen.
+// Phone: a compact yellow header (logo + name), the form below. No clipped artwork on a phone.
 // role: 'candidate' (/) | 'staff' (/staff) | 'hiring' (/hiring)
-const ROLES = [['candidate', 'ผู้สมัคร', '/'], ['staff', 'HR Team', '/staff'], ['hiring', 'Hiring', '/hiring']]
+const ROLES = [['candidate', 'Candidate', '/'], ['staff', 'HR Team', '/staff'], ['hiring', 'Hiring', '/hiring']]
 const COPY = {
   candidate: { h: 'Welcome back', s: 'ใส่อีเมลที่ได้รับเชิญ เราจะส่งรหัส OTP ให้ แล้วส่งเอกสารได้ทันที ทยอยส่งเท่าที่มีได้' },
   staff: { h: 'Welcome back', s: 'เข้าสู่พื้นที่ทำงานของทีม HR เพื่อตรวจและจัดการเอกสารผู้สมัคร' },
@@ -17,13 +17,15 @@ const I = {
 const Ic = ({ d }) => <svg className="lx-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={d} /></svg>
 const Tick = () => <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M3 8.5l3.2 3L13 4.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
 
-function Docs({ small }) {
+function Docs() {
   return (
-    <div className={'lx-docs' + (small ? ' sm' : '')} aria-hidden="true">
-      <div className="lx-doc d3"><div className="dh"><i /><b>Transcript</b></div><span className="ln" /><span className="ln s" /></div>
-      <div className="lx-doc d2"><div className="dh"><i /><b>House Registration</b><em className="st wait">Under Review</em></div><span className="ln" /><span className="ln s" /><span className="ln" /></div>
-      <div className="lx-doc d1"><div className="dh"><i /><b>ID Card</b><em className="st ok"><Tick /> Verified</em></div><span className="ln" /><span className="ln s" /></div>
-      <div className="lx-badge"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d={I.shield} /><path d="M8.5 12l2.5 2.5 4.5-5" /></svg> Secure</div>
+    <div className="lx-dw" aria-hidden="true">
+      <div className="lx-docs">
+        <div className="lx-doc d3"><div className="dh"><i /><b>Transcript</b></div><span className="ln" /><span className="ln s" /></div>
+        <div className="lx-doc d2"><div className="dh"><i /><b>House Registration</b><em className="st wait">Under Review</em></div><span className="ln" /><span className="ln s" /><span className="ln" /></div>
+        <div className="lx-doc d1"><div className="dh"><i /><b>ID Card</b><em className="st ok"><Tick /> Verified</em></div><span className="ln" /><span className="ln s" /></div>
+        <div className="lx-badge"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d={I.shield} /><path d="M8.5 12l2.5 2.5 4.5-5" /></svg> Secure</div>
+      </div>
     </div>
   )
 }
@@ -65,19 +67,17 @@ export default function LoginScreen({ role = 'candidate' }) {
     <div className="lx">
       <aside className="lx-brand">
         <svg className="lx-shapes" viewBox="0 0 600 800" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
-          <defs><linearGradient id="lxg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#8fb09a" stopOpacity=".35" /><stop offset="1" stopColor="#8fb09a" stopOpacity="0" /></linearGradient></defs>
-          <circle cx="520" cy="90" r="210" fill="url(#lxg)" /><circle cx="40" cy="720" r="260" fill="none" stroke="#fff" strokeOpacity=".07" strokeWidth="1.5" /><circle cx="40" cy="720" r="190" fill="none" stroke="#fff" strokeOpacity=".06" strokeWidth="1.5" />
-          <path d="M-20 430 C 140 360, 260 520, 420 450 S 640 380, 640 380" fill="none" stroke="#ffc72c" strokeOpacity=".35" strokeWidth="1.5" />
+          <circle cx="560" cy="60" r="250" fill="#fff" fillOpacity=".16" />
+          <circle cx="30" cy="760" r="270" fill="none" stroke="#2b2723" strokeOpacity=".08" strokeWidth="1.5" />
+          <circle cx="30" cy="760" r="190" fill="none" stroke="#2b2723" strokeOpacity=".07" strokeWidth="1.5" />
         </svg>
-        <div className="lx-glow" aria-hidden="true" />
         <div className="lx-bt">
           <span className="lx-logo">CD</span>
           <div><b>Candidate Document Portal</b><span className="lx-tag">Secure onboarding documents</span></div>
         </div>
         <div className="lx-hero">
-          <div className="lx-eyebrow">Document journey</div>
-          <h2>Your Documents.<br />One Clear Journey.</h2>
-          <p>ส่ง ตรวจ และติดตามเอกสารเริ่มงานในที่เดียว เห็นสถานะทุกขั้นตอนอย่างโปร่งใส ไม่ต้องไล่ถามกันทางอีเมล</p>
+          <h2>Your documents,<br />in one place.</h2>
+          <p>ส่ง ตรวจ และติดตามเอกสารเริ่มงานในที่เดียว เห็นสถานะทุกไฟล์อย่างโปร่งใส ไม่ต้องไล่ถามกันทางอีเมล</p>
         </div>
         <Docs />
         <ul className="lx-trust"><li><Ic d={I.shield} /> Secure document handling</li><li><Ic d={I.lock} /> เข้าถึงได้เฉพาะผู้มีสิทธิ์ · มีบันทึกการใช้งาน</li></ul>
@@ -96,7 +96,7 @@ export default function LoginScreen({ role = 'candidate' }) {
           </div>
           <form onSubmit={submit} noValidate>
             {(method === 'otp' || role === 'candidate') && (
-              <label className="lx-f"><span>{method === 'code' ? 'อีเมลของแคนดิเดตที่ต้องการเข้า' : 'อีเมล'}</span>
+              <label className="lx-f"><span>{method === 'code' ? 'อีเมลของ Candidate ที่ต้องการเข้า' : 'อีเมล'}</span>
                 <div className="lx-in"><Ic d={I.mail} /><input type="email" inputMode="email" autoComplete="email" placeholder="name@company.com" value={email} onChange={(e) => setEmail(e.target.value)} disabled={method === 'otp' && step === 1} /></div></label>
             )}
             {method === 'otp' && step === 1 && (
@@ -127,10 +127,9 @@ export default function LoginScreen({ role = 'candidate' }) {
           <p className="lx-priv"><Ic d={I.shield} /> ข้อมูลของคุณถูกใช้เพื่อการสมัครงานเท่านั้น และเข้าถึงได้เฉพาะผู้ที่ได้รับสิทธิ์</p>
         </div>
       </main>
-      {/* phone header: same brand, short */}
+      {/* phone header: compact, yellow, no artwork */}
       <header className="lx-mhead" aria-hidden="true">
-        <span className="lx-logo">CD</span><div><b>Candidate Document Portal</b><span>Your Documents. One Clear Journey.</span></div>
-        <Docs small />
+        <span className="lx-logo">CD</span><div><b>Candidate Document Portal</b><span>Your documents, in one place.</span></div>
       </header>
     </div>
   )

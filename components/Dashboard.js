@@ -50,7 +50,7 @@ export default function Dashboard({ rows, photos, onOpen, onReview, onZip, now =
             <div className="ph">ผู้สมัครทั้งหมด</div>
             <div className="big">{total}</div>
             <div className="bar" style={{ marginTop: 8 }}><i style={{ width: (total ? (ready / total) * 100 : 0) + '%' }} /></div>
-            <div className="sub">เอกสารฝั่งแคนดิเดตครบ {cdone} คน</div>
+            <div className="sub">เอกสารฝั่ง Candidate ครบ {cdone} คน</div>
             <div className="sub">เอกสารฝั่ง Recruiter ครบ {rdone} คน</div>
             <div className="sub"><b style={{ color: 'var(--ink)' }}>ครบทั้งสองฝั่ง {ready} คน</b></div>
           </div>

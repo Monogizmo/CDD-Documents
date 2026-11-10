@@ -17,7 +17,7 @@ export default function Stepper({ c, docs, rdone }) {
       ? [{ t: 'เอกสารครบถ้วน', d: checked ? 'ครบถ้วนแล้ว' : 'รอขั้นตอนก่อนหน้า', done: checked }]
       // HR view: the two sides are tracked separately
       : [{ t: 'ฝั่ง Recruiter', d: rdone ? 'เอกสารครบ' : 'ยังไม่ครบ', done: rdone },
-         { t: 'ครบทั้งสองฝั่ง', d: all ? 'ครบถ้วนแล้ว' : 'รอ ' + [!checked && 'ฝั่งแคนดิเดต', !rdone && 'ฝั่ง Recruiter'].filter(Boolean).join(' และ '), done: all }]),
+         { t: 'ครบทั้งสองฝั่ง', d: all ? 'ครบถ้วนแล้ว' : 'รอ ' + [!checked && 'ฝั่ง Candidate', !rdone && 'ฝั่ง Recruiter'].filter(Boolean).join(' และ '), done: all }]),
   ]
   const cur = steps.findIndex((s) => !s.done)
   return (

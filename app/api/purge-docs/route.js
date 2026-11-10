@@ -29,8 +29,8 @@ export async function POST(req) {
   const { data: st } = await admin.from('staff').select('role, active').eq('email', email).maybeSingle()
   if (!st || !st.active || !['admin', 'recruiter', 'hiring'].includes(st.role)) return Response.json({ error: 'ไม่มีสิทธิ์' }, { status: 403 })
   const { data: cand } = await admin.from('candidates').select('id, offer_made').eq('id', candidateId).maybeSingle()
-  if (!cand) return Response.json({ error: 'ไม่พบแคนดิเดต' }, { status: 404 })
-  if (st.role === 'hiring' && !cand.offer_made) return Response.json({ error: 'ไม่มีสิทธิ์กับแคนดิเดตคนนี้' }, { status: 403 })
+  if (!cand) return Response.json({ error: 'ไม่พบ Candidate' }, { status: 404 })
+  if (st.role === 'hiring' && !cand.offer_made) return Response.json({ error: 'ไม่มีสิทธิ์กับ Candidate คนนี้' }, { status: 403 })
 
   const { data: rows } = await admin.from('documents').select('id, storage_path').eq('candidate_id', candidateId)
   const paths = new Set((rows || []).map((r) => r.storage_path))

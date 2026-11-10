@@ -62,7 +62,7 @@ export default function BulkDownload({ rows, docs, positions, photos }) {
                 <td>{r.c.srf_no}</td><td>{r.c.position}</td><td>{files(r).length} ไฟล์</td>
               </tr>
             ))}
-            {!list.length && <tr><td colSpan="5" className="mute">ไม่พบแคนดิเดตตามเงื่อนไข</td></tr>}
+            {!list.length && <tr><td colSpan="5" className="mute">ไม่พบ Candidate ตามเงื่อนไข</td></tr>}
           </tbody>
         </table></div>
       </div>

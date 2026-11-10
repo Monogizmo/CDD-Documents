@@ -46,7 +46,7 @@ function DocCard({ d, c, m, chain, events, urls, loaded, onReview, onComment, on
       <div className="pv">
         {!seen ? <div className="sub">กำลังรอแสดงตัวอย่าง...</div>
           : !url ? (loaded
-            ? <div className="err" style={{ padding: 12 }}>ไม่พบไฟล์นี้ใน Storage (อาจถูกลบออกจาก Supabase โดยตรง) กดปุ่ม "ลบไฟล์" เพื่อเคลียร์รายการนี้ แล้วให้แคนดิเดตอัปโหลดใหม่</div>
+            ? <div className="err" style={{ padding: 12 }}>ไม่พบไฟล์นี้ใน Storage (อาจถูกลบออกจาก Supabase โดยตรง) กดปุ่ม "ลบไฟล์" เพื่อเคลียร์รายการนี้ แล้วให้ Candidate อัปโหลดใหม่</div>
             : <div className="sub">กำลังโหลดไฟล์...</div>)
           : <DocViewer key={file.id + file.storage_path} url={url} ext={file.ext} name={file.original_name} canEdit={latest} onSave={(b, e) => onSaveEdit(d, b, e)} />}
       </div>
@@ -59,7 +59,7 @@ function DocCard({ d, c, m, chain, events, urls, loaded, onReview, onComment, on
       </div>
       {rev !== null && (
         <div className="rb">
-          <label className="f ink">เหตุผลที่ต้องแก้ไข (แคนดิเดตจะเห็น)
+          <label className="f ink">เหตุผลที่ต้องแก้ไข (Candidate จะเห็น)
             <input type="text" value={rev} autoFocus placeholder="เช่น ภาพไม่ชัด / เอกสารไม่ครบหน้า" onChange={(e) => setRev(e.target.value)} /></label>
           <div className="ctl"><button type="button" className="btn pri sm" disabled={!rev.trim()} onClick={async () => { await onReview(d, 'fix', rev); setRev(null) }}>ส่งขอแก้ไข</button>
             <button type="button" className="btn sm" onClick={() => setRev(null)}>ยกเลิก</button></div>
@@ -67,7 +67,7 @@ function DocCard({ d, c, m, chain, events, urls, loaded, onReview, onComment, on
       )}
       <div className="cmbox">
         <input type="text" value={cm} placeholder="เพิ่มความเห็น (Comment)" onChange={(e) => setCm(e.target.value)} />
-        <label className="chk2"><input type="checkbox" checked={vis} onChange={(e) => setVis(e.target.checked)} /> แคนดิเดตเห็น</label>
+        <label className="chk2"><input type="checkbox" checked={vis} onChange={(e) => setVis(e.target.checked)} /> Candidate เห็น</label>
         <button type="button" className="btn sm" disabled={!cm.trim()} onClick={async () => { await onComment(d, cm.trim(), vis); setCm('') }}>ส่งความเห็น</button>
       </div>
       <Fold small title="ประวัติการตรวจสอบและเวอร์ชัน" badge={<span className="tag g" style={{ marginLeft: 8 }}>{events.filter((e) => chain.some((x) => x.id === e.document_id)).length}</span>}>
@@ -128,7 +128,7 @@ export default function ReviewCenter({ c, m, hist, events, photo, onBack, onRevi
         </nav>
         <div className="rcm">
           {missing.length > 0 && <div className="panel" style={{ boxShadow: 'none' }}><span className="tag g">Missing · ยังไม่ได้รับ</span><div className="err">{missing.map((k) => nm(k[0]) + k[1]).join(' · ')}</div></div>}
-          {!m.length && <div className="panel">แคนดิเดตยังไม่ได้อัปโหลดไฟล์</div>}
+          {!m.length && <div className="panel">Candidate ยังไม่ได้อัปโหลดไฟล์</div>}
           {cats.map((k) => m.filter((d) => d.category === k[0]).map((d) => (
             <DocCard key={d.id} d={d} c={c} m={m} chain={chainOf(d, hist)} events={events} urls={urls} loaded={loaded} onReview={onReview} onComment={onComment} onOpened={onOpened} onDelete={onDelete} onSaveEdit={onSaveEdit} />
           )))}

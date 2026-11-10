@@ -108,7 +108,7 @@ export default function Hiring() {
   return (
     <Shell right={out}>
       <h1 className="pgt">เอกสารที่พร้อมรับ</h1>
-      <div className="hint" style={{ marginBottom: 10 }}>แสดงเฉพาะแคนดิเดตที่ Recruiter ส่งให้ Hiring และเฉพาะไฟล์ที่ตรวจผ่านแล้ว (Verified) รวมเอกสารฝั่ง Recruiter ด้วย</div>
+      <div className="hint" style={{ marginBottom: 10 }}>แสดงเฉพาะ Candidate ที่ Recruiter ส่งให้ Hiring และเฉพาะไฟล์ที่ตรวจผ่านแล้ว (Verified) รวมเอกสารฝั่ง Recruiter ด้วย</div>
       <div className="sf">
         <input type="text" value={q} placeholder="ค้นหา ชื่อ · อีเมล · SRF · ตำแหน่ง" aria-label="ค้นหา" onChange={(e) => setQ(e.target.value)} />
         <select value={pos} aria-label="ตำแหน่ง" onChange={(e) => setPos(e.target.value)}>
@@ -127,7 +127,7 @@ export default function Hiring() {
         </div>
         {msg && <div className="hint" style={{ marginTop: 8 }}>{msg}</div>}
       </div>
-      {!list.length && <div className="panel">{cands.length ? 'ไม่พบแคนดิเดตตามเงื่อนไข' : 'ยังไม่มีแคนดิเดตที่ส่งให้ Hiring'}</div>}
+      {!list.length && <div className="panel">{cands.length ? 'ไม่พบ Candidate ตามเงื่อนไข' : 'ยังไม่มี Candidate ที่ส่งให้ Hiring'}</div>}
       {list.length > 0 && (
         <label className="chk2" style={{ margin: '0 0 8px 4px' }}><input type="checkbox" checked={all} onChange={(e) => setSel(Object.fromEntries(list.map((c) => [c.id, e.target.checked])))} /> เลือกทั้งหมด</label>
       )}
@@ -154,7 +154,7 @@ export default function Hiring() {
                 {[...mine, ...rec].map((d) => (
                   <li key={d.id}>
                     <div className="fl"><span>{fname(c, d, l)}</span><button type="button" className="btn sm" onClick={() => view(d)}>เปิดดู</button></div>
-                    <div className="hint">{isR(d.category) ? 'เอกสารฝั่ง Recruiter' : 'เอกสารแคนดิเดต'} · อัปเดต {fdt(d.updated_at || d.created_at)}</div>
+                    <div className="hint">{isR(d.category) ? 'เอกสารฝั่ง Recruiter' : 'เอกสาร Candidate'} · อัปเดต {fdt(d.updated_at || d.created_at)}</div>
                   </li>
                 ))}
               </ul>

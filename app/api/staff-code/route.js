@@ -22,7 +22,7 @@ export async function POST(req) {
   if (mode === 'candidate') {
     // only an invited candidate can be opened; nobody new is created
     const { data: cd } = await admin.from('candidates').select('id').eq('email', email).maybeSingle()
-    if (!cd) return Response.json({ error: 'ไม่พบอีเมลนี้ในรายชื่อแคนดิเดต' }, { status: 404 })
+    if (!cd) return Response.json({ error: 'ไม่พบอีเมลนี้ในรายชื่อ Candidate' }, { status: 404 })
   }
   await admin.auth.admin.createUser({ email, email_confirm: true }) // ignored if it already exists
   const { data, error } = await admin.auth.admin.generateLink({ type: 'magiclink', email })

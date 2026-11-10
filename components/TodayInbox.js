@@ -10,9 +10,9 @@ export default function TodayInbox({ rows, photos, onReview, onOpen, now = new D
   const late = (r) => !r.both && r.c.due_date && new Date(r.c.due_date) < new Date(now.toDateString())
   const Q = [
     { k: 'review', t: 'ไฟล์รอตรวจ', s: 'เปิด Review Center เพื่อ Approve / ขอแก้ไข', who: rows.filter((r) => r.w > 0), note: (r) => r.w + ' ไฟล์', act: onReview, cta: 'ตรวจ' },
-    { k: 'rec', t: 'ฝั่งแคนดิเดตผ่านแล้ว · รอเอกสารฝั่ง Recruiter', s: 'อัปโหลดเอกสารที่ Recruiter ต้องแนบ', who: rows.filter((r) => r.candDone && !r.recDone), note: (r) => 'ขาด ' + r.rmiss.length, act: onOpen, cta: 'เปิด' },
+    { k: 'rec', t: 'ฝั่ง Candidate ผ่านแล้ว · รอเอกสารฝั่ง Recruiter', s: 'อัปโหลดเอกสารที่ Recruiter ต้องแนบ', who: rows.filter((r) => r.candDone && !r.recDone), note: (r) => 'ขาด ' + r.rmiss.length, act: onOpen, cta: 'เปิด' },
     { k: 'hire', t: 'ครบทั้งสองฝั่ง · พร้อมส่งให้ Hiring', s: 'กด "ส่งให้ Hiring รับเอกสาร" ในการ์ด', who: rows.filter((r) => r.both && !r.c.offer_made), note: () => 'ครบแล้ว', act: onOpen, cta: 'เปิด' },
-    { k: 'fix', t: 'รอแคนดิเดตแก้ไขไฟล์', s: 'ติดตามถ้าเงียบเกินไป', who: rows.filter((r) => r.x > 0), note: (r) => r.x + ' ไฟล์', act: onOpen, cta: 'เปิด' },
+    { k: 'fix', t: 'รอ Candidate แก้ไขไฟล์', s: 'ติดตามถ้าเงียบเกินไป', who: rows.filter((r) => r.x > 0), note: (r) => r.x + ' ไฟล์', act: onOpen, cta: 'เปิด' },
     { k: 'late', t: 'เลยกำหนดส่ง', s: 'ยังไม่ครบทั้งสองฝั่ง', who: rows.filter(late), note: (r) => 'กำหนด ' + new Date(r.c.due_date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' }), act: onOpen, cta: 'เปิด' },
   ].filter((q) => q.who.length)
   return (

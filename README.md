@@ -87,3 +87,14 @@ Run `007_other_doc_title.sql` after 006. The title typed after upload becomes th
 
 ## Update 014: new sign-in screen
 - `components/LoginScreen.js` replaces the old login panels on `/`, `/staff` and `/hiring` (same Supabase email-OTP and team-code logic). Role switch (Candidate / HR Team / Hiring) links to the three entrances. Styles: `.lx*` at the end of `app/globals.css`; palette variables at the top of `.lx` (Deep Navy, Sage, Ivory + CI yellow accents). Font: IBM Plex Sans Thai (`app/layout.js`).
+
+## Update 015: Krungsri CI colors, one-screen sign-in, Candidate profile first, page splitting, Recruiter list
+- Run `supabase/migrations/012_recruiters.sql` once (after 001-011). No new npm package.
+- Colors: Krungsri yellow `#ffc72c` + warm charcoal `#2b2723`. Tokens are at the top of `app/globals.css` (`:root`); the loud yellow is only the top bar, the main buttons and the sign-in brand panel. The "CI v3" block near the end holds the rest.
+- Sign-in (`components/LoginScreen.js`, `.lx*` CSS): fits one screen on a laptop (the artwork scales with the window height), compact yellow header on a phone. The tagline is in `LoginScreen.js` (`Your documents, in one place.`).
+- Candidate (`app/page.js`): profile with photo is at the top (tap the photo / camera to change it, "แก้ไขข้อมูลของฉัน" edits the name inline); multi-file upload sits right under it; the guide and the document list table are folded by default.
+- Page splitting (`lib/splitpdf.js`, `readPdfPages` in `lib/readdoc.js`, `components/BulkUpload.js`): when one PDF holds several documents, each page is read (PDF text, OCR for scans) and a new document starts when a page clearly belongs to another category. The review step shows page ranges per document (editable, merge, add, skip); every file also has a "แยกหน้า" button to force it. Candidates and Recruiters both get this.
+- Recruiter list (`lib/recruiters.js`, `components/RecruiterPicker.js`): drop-down on Add Candidate, on the Candidate card and in the filters; "จัดการรายชื่อ" adds / removes names. Removing a name only removes it from the list. Before migration 012 is run the list still works (default 16 names, edits kept in that browser only).
+- Reports (`components/Reports.js`): one card per Recruiter (workload, missing documents, longest waiting, ready for Hiring) with the Candidate list inside; no company-wide overview. Export CSV is still there.
+- PDF Checker & Automation Prep is now a small icon in the top bar (next to Sign out), not a menu item.
+- The word "แคนดิเดต" is now "Candidate" everywhere.

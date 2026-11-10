@@ -25,7 +25,7 @@ export default function CodeLogin({ mode = 'staff' }) {
   return (
     <div className="panel">
       <b>เข้าด้วยรหัสทีม</b>
-      {mode === 'candidate' && <label className="f">อีเมลของแคนดิเดตที่ต้องการเข้า<input type="text" autoComplete="off" value={mail} onChange={(e) => setMail(e.target.value)} /></label>}
+      {mode === 'candidate' && <label className="f">อีเมลของ Candidate ที่ต้องการเข้า<input type="text" autoComplete="off" value={mail} onChange={(e) => setMail(e.target.value)} /></label>}
       <label className="f">ชื่อผู้ใช้ (บันทึกไว้ใน log)<input type="text" value={name} onChange={(e) => setName(e.target.value)} /></label>
       <label className="f">รหัส<input type="password" autoComplete="off" value={code} onChange={(e) => setCode(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && go()} /></label>
       <div style={{ marginTop: 12 }}><button className="btn pri" disabled={busy} onClick={go}>เข้าสู่ระบบ</button></div>

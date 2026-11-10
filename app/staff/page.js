@@ -21,6 +21,8 @@ import { purgeDocs } from '../../lib/purge'
 import PdfChecker from '../../components/PdfChecker'
 import BulkDownload from '../../components/BulkDownload'
 import Reports from '../../components/Reports'
+import { RecruiterSelect, RecruiterManager } from '../../components/RecruiterPicker'
+import { useRecruiters } from '../../lib/recruiters'
 import { usePhotoUrls } from '../../lib/photos'
 import { stageOf, STAGE_NAME } from '../../lib/stage'
 
@@ -40,10 +42,9 @@ const NAV = [
   ['review', 'Document Review', 'M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11', 'ตรวจ'],
   ['bulk', 'Bulk Download', 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3', 'โหลด'],
   ['reports', 'Reports', 'M18 20V10M12 20V4M6 20v-6', 'รายงาน'],
-  ['checker', 'PDF Checker & Automation Prep', 'M5 3h10l4 4v14H5zM9 13l2 2 4-4', 'PDF'],
-  ['add', 'เพิ่มแคนดิเดต', 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M19 8v6M22 11h-6', 'เพิ่ม'],
+  ['add', 'เพิ่ม Candidate', 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M19 8v6M22 11h-6', 'เพิ่ม'],
 ]
-const TITLE = Object.fromEntries(NAV.map((n) => [n[0], n[1]]))
+const TITLE = { ...Object.fromEntries(NAV.map((n) => [n[0], n[1]])), checker: 'PDF Checker & Automation Prep' }
 // missing documents as small chips instead of one long red line; hover / long-press a chip for the full Thai name
 function MissChips({ label, items, max = 4 }) {
   const [all, setAll] = useState(false), shown = all ? items : items.slice(0, max)
@@ -72,6 +73,8 @@ export default function Staff() {
   const [bz, setBz] = useState('')
   const [pg, setPg] = useState('dash')
   const [rv, setRv] = useState(null)       // candidate id open in the Review Center
+  const [rm, setRm] = useState(false)       // Recruiter list manager open (Add Candidate page)
+  const rec = useRecruiters(!!ses)
   const photos = usePhotoUrls(docs)
   const timer = useRef(null)
 
@@ -107,7 +110,13 @@ export default function Staff() {
     return () => { supabase.removeChannel(ch); clearTimeout(timer.current) }
   }, [ses, load])
 
-  const out = ses ? <button className="btn sm" onClick={() => supabase.auth.signOut()}>ออกจากระบบ</button> : null
+  const isStaff = role === 'admin' || role === 'recruiter'
+  const out = ses ? (
+    <div className="topright">
+      {isStaff && <button type="button" className={'tool' + (pg === 'checker' ? ' on' : '')} title="PDF Checker & Automation Prep (เครื่องมือเสริม)" aria-label="PDF Checker & Automation Prep" onClick={() => go('checker')}><Ic d="M5 3h10l4 4v14H5zM9 13l2 2 4-4" /></button>}
+      <button className="btn sm" onClick={() => supabase.auth.signOut()}>ออกจากระบบ</button>
+    </div>
+  ) : null
   if (ses === undefined) return null
   if (!ses) return <LoginScreen role="staff" />
   if (role === null) return <Shell right={out}>กำลังโหลด...</Shell>
@@ -116,10 +125,11 @@ export default function Staff() {
 
   async function add(e) {
     e.preventDefault()
-    if (!f.rec.trim() || !f.typ) { setMsg('กรุณาใส่ชื่อ Recruiter และเลือก Sales / Non-Sales'); return }
+    if (!f.email.trim() || !f.srf.trim() || !f.pos.trim()) { setMsg('กรุณากรอกอีเมล เลข SRF และชื่อตำแหน่ง'); return }
+    if (!f.rec || !f.typ) { setMsg('กรุณาเลือก Recruiter และเลือก Sales / Non-Sales'); return }
     const { error } = await supabase.from('candidates').insert({ srf_no: f.srf.trim(), position: f.pos.trim(), email: f.email.trim().toLowerCase(), recruiter_name: f.rec.trim(), sales_type: f.typ })
     // keep Recruiter + type for the next candidate (adding several in a row)
-    if (error) setMsg(error.message); else { setMsg('เพิ่มแคนดิเดตแล้ว'); setCtab(f.typ); setF({ srf: '', pos: '', email: '', rec: f.rec, typ: f.typ }); load() }
+    if (error) setMsg(error.message); else { setMsg('เพิ่ม Candidate แล้ว'); setCtab(f.typ); setF({ srf: '', pos: '', email: '', rec: f.rec, typ: f.typ }); load() }
   }
   async function setMeta(c, p) {
     const { error } = await supabase.from('candidates').update(p).eq('id', c.id)
@@ -158,7 +168,7 @@ export default function Staff() {
   // delete = the file in Storage AND its row in the documents table (deleting only in the Supabase Storage screen leaves the row behind)
   async function delDoc(d) {
     const ch = chainOf(d, hist)
-    if (!confirm('ลบไฟล์นี้ออกจากระบบถาวร?\n' + d.original_name + (ch.length > 1 ? '\n(รวมฉบับเก่าอีก ' + (ch.length - 1) + ' ฉบับ)' : '') + '\n\nลบแล้วกู้คืนไม่ได้ แคนดิเดตต้องอัปโหลดใหม่')) return
+    if (!confirm('ลบไฟล์นี้ออกจากระบบถาวร?\n' + d.original_name + (ch.length > 1 ? '\n(รวมฉบับเก่าอีก ' + (ch.length - 1) + ' ฉบับ)' : '') + '\n\nลบแล้วกู้คืนไม่ได้ Candidate ต้องอัปโหลดใหม่')) return
     await logEv(d, 'delete', 'ลบไฟล์โดย recruiter')
     await supabase.storage.from(BUCKET).remove(ch.map((x) => x.storage_path))
     const { error } = await supabase.from('documents').delete().in('id', ch.map((x) => x.id))
@@ -179,20 +189,20 @@ export default function Staff() {
   // all documents of this candidate (files + rows); the candidate stays on the list
   async function purge(c) {
     const n = [...docs, ...hist].filter((d) => d.candidate_id === c.id).length
-    if (!n) { setMsg('แคนดิเดตคนนี้ไม่มีเอกสารให้ลบ'); return }
-    if (!confirm('ลบเอกสารทั้งหมดของ ' + (c.first_name ? base(c) : c.email) + ' (' + n + ' ไฟล์รวมฉบับเก่า) ออกจากระบบถาวร?\n\nใช้เมื่อโหลดไปเก็บที่อื่นแล้ว ลบแล้วกู้คืนไม่ได้ รายชื่อแคนดิเดตยังอยู่')) return
+    if (!n) { setMsg('Candidate คนนี้ไม่มีเอกสารให้ลบ'); return }
+    if (!confirm('ลบเอกสารทั้งหมดของ ' + (c.first_name ? base(c) : c.email) + ' (' + n + ' ไฟล์รวมฉบับเก่า) ออกจากระบบถาวร?\n\nใช้เมื่อโหลดไปเก็บที่อื่นแล้ว ลบแล้วกู้คืนไม่ได้ รายชื่อ Candidate ยังอยู่')) return
     try { const r = await purgeDocs(c.id); setMsg('ลบเอกสารทั้งหมดแล้ว (' + r.files + ' ไฟล์)') } catch (e) { setMsg(e.message) }
     load()
   }
   async function delCand(c) {
-    if (!confirm('ลบแคนดิเดตและไฟล์ทั้งหมด? ย้อนกลับไม่ได้')) return
+    if (!confirm('ลบ Candidate และไฟล์ทั้งหมด? ย้อนกลับไม่ได้')) return
     const p = [...docs, ...hist].filter((d) => d.candidate_id === c.id).map((d) => d.storage_path)
     if (p.length) await supabase.storage.from(BUCKET).remove(p)
     await supabase.from('candidates').delete().eq('id', c.id); setSel(null); load()
   }
   // Hiring (/hiring) sees only candidates with offer_made = true, and only Verified files
   async function setOffer(c, v) {
-    if (v && !confirm('ส่งแคนดิเดตนี้ให้ Hiring รับเอกสาร?' + (candOk(c) ? '' : '\n\nหมายเหตุ: เอกสารยังไม่ครบทั้งสองฝั่ง Hiring จะเห็นเฉพาะไฟล์ที่ Verified แล้ว'))) return
+    if (v && !confirm('ส่ง Candidate นี้ให้ Hiring รับเอกสาร?' + (candOk(c) ? '' : '\n\nหมายเหตุ: เอกสารยังไม่ครบทั้งสองฝั่ง Hiring จะเห็นเฉพาะไฟล์ที่ Verified แล้ว'))) return
     const { error } = await supabase.from('candidates').update({ offer_made: v }).eq('id', c.id)
     setMsg(error ? error.message : v ? 'ส่งให้ Hiring แล้ว' : 'ยกเลิกการส่งให้ Hiring แล้ว'); load()
   }
@@ -247,7 +257,8 @@ export default function Staff() {
 
   const info = buildRows(cands, docs)
   const positions = [...new Set(cands.map((c) => c.position).filter(Boolean))].sort()
-  const recs = [...new Set(cands.map((c) => c.recruiter_name).filter(Boolean))].sort()
+  const recUse = cands.reduce((a, c) => { if (c.recruiter_name) a[c.recruiter_name] = (a[c.recruiter_name] || 0) + 1; return a }, {})
+  const recs = [...new Set([...rec.names, ...Object.keys(recUse)])].sort((x, y) => x.localeCompare(y, 'en', { sensitivity: 'base' }))
   const list = filterRows(info, flt)
   const tabRows = info.filter((r) => typeKey(r.c) === ctab)   // Candidate List shows one type at a time
   const tabList = filterRows(tabRows, flt)
@@ -277,25 +288,36 @@ export default function Staff() {
 
           {pg === 'add' && (
             <form className="panel" onSubmit={add}>
-              <b>เพิ่มแคนดิเดต</b>
-              <div className="grid3">
-                <label className="f">อีเมลแคนดิเดต<input type="text" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} /></label>
-                <label className="f">เลข SRF<input type="text" value={f.srf} placeholder="002/2026" onChange={(e) => setF({ ...f, srf: e.target.value })} /></label>
-                <label className="f">ชื่อตำแหน่ง<input type="text" value={f.pos} onChange={(e) => setF({ ...f, pos: e.target.value })} /></label>
-                <label className="f">ชื่อ Recruiter ที่ดูแล<input type="text" list="recs" value={f.rec} placeholder="เช่น เบียร์" onChange={(e) => setF({ ...f, rec: e.target.value })} /></label>
-                <datalist id="recs">{recs.map((p) => <option key={p} value={p} />)}</datalist>
-                <div className="f">ประเภท
-                  <div className="ctl" style={{ marginTop: 6 }}>
-                    {TYPES.map(([k, t]) => <button type="button" key={k} className={'btn' + (f.typ === k ? ' pri' : '')} aria-pressed={f.typ === k} onClick={() => setF({ ...f, typ: k })}>{t}</button>)}
+              <b>เพิ่ม Candidate</b>
+              <div className="hint">Candidate เข้าสู่ระบบด้วยอีเมลนี้ (รหัส OTP) และเห็นเฉพาะเอกสารของตัวเอง</div>
+              <div className="fgrid">
+                <label className="fld full"><span className="fl2">อีเมล Candidate</span><input type="text" inputMode="email" autoComplete="off" placeholder="name@example.com" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} /></label>
+                <label className="fld"><span className="fl2">เลข SRF</span><input type="text" value={f.srf} placeholder="002/2026" onChange={(e) => setF({ ...f, srf: e.target.value })} /></label>
+                <label className="fld"><span className="fl2">ชื่อตำแหน่ง</span><input type="text" value={f.pos} onChange={(e) => setF({ ...f, pos: e.target.value })} /></label>
+                <div className="fld"><span className="fl2">Recruiter ที่ดูแล</span>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <RecruiterSelect names={rec.names} value={f.rec} onChange={(v) => setF({ ...f, rec: v })} style={{ flex: 1, minWidth: 0 }} aria-label="Recruiter ที่ดูแล" />
+                    <button type="button" className={'btn' + (rm ? ' pri' : '')} style={{ height: 44 }} onClick={() => setRm(!rm)}>จัดการรายชื่อ</button>
                   </div>
                 </div>
+                <div className="fld"><span className="fl2">ประเภท</span>
+                  <div className="seg wide" role="group" aria-label="ประเภท">
+                    {TYPES.map(([k, t]) => <button type="button" key={k} className={f.typ === k ? 'on' : ''} aria-pressed={f.typ === k} onClick={() => setF({ ...f, typ: k })}>{t}</button>)}
+                  </div>
+                </div>
+                {rm && <div className="full"><RecruiterManager rec={rec} usage={recUse} onClose={() => setRm(false)} /></div>}
               </div>
-              <div style={{ marginTop: 12 }}><button className="btn pri" type="submit">เพิ่ม</button></div>
+              <div style={{ marginTop: 16 }}><button className="btn pri" type="submit">เพิ่ม Candidate</button></div>
             </form>
           )}
 
           {pg === 'reports' && <Reports rows={info} />}
-          {pg === 'checker' && <PdfChecker />}
+          {pg === 'checker' && (
+            <>
+              <div className="hint" style={{ margin: '-8px 0 12px' }}>เครื่องมือเสริมสำหรับตรวจและเตรียมไฟล์ PDF ก่อนส่งเข้าระบบอัตโนมัติ ทำงานในเบราว์เซอร์นี้ ไม่มีการอัปโหลดไฟล์ · <button type="button" className="more" style={{ padding: 0 }} onClick={() => go('dash')}>กลับหน้า Dashboard</button></div>
+              <PdfChecker />
+            </>
+          )}
           {pg === 'bulk' && <BulkDownload rows={info} docs={docs} positions={positions} photos={photos} />}
 
           {pg === 'review' && (rvRow ? (
@@ -303,9 +325,9 @@ export default function Staff() {
               photo={photos[rvRow.c.id]} onBack={() => setRv(null)} onReview={review} onComment={comment} onOpened={opened} onDelete={delDoc} onSaveEdit={saveEdit} />
           ) : (
             <>
-              <div className="hint" style={{ marginBottom: 10 }}>เลือกแคนดิเดตเพื่อดูเอกสารทั้งหมดในหน้าจอเดียว พร้อม Approve / Request Revision / Comment และประวัติการตรวจสอบ</div>
+              <div className="hint" style={{ marginBottom: 10 }}>เลือก Candidate เพื่อดูเอกสารทั้งหมดในหน้าจอเดียว พร้อม Approve / Request Revision / Comment และประวัติการตรวจสอบ</div>
               <SearchFilter f={flt} setF={setFlt} positions={positions} />
-              {!list.length && <div className="panel">ไม่พบแคนดิเดตตามเงื่อนไข</div>}
+              {!list.length && <div className="panel">ไม่พบ Candidate ตามเงื่อนไข</div>}
               {[...list].sort((a, b) => b.rc + b.pd + b.x - (a.rc + a.pd + a.x)).map((r) => (
                 <section className="panel" key={r.c.id}>
                   <div className="row" style={{ cursor: 'default' }}>
@@ -335,13 +357,13 @@ export default function Staff() {
                 <div className="kpi"><span className="sub">Missing · ยังขาดเอกสารบังคับ (คน)</span><b>{tabRows.filter((i) => i.miss.length).length}</b></div>
                 <div className="kpi"><span className="sub">ไฟล์รอตรวจ (Received + Pending)</span><b>{tabRows.reduce((a, i) => a + i.w, 0)}</b></div>
                 <div className="kpi"><span className="sub">Revision Required (ไฟล์)</span><b>{tabRows.reduce((a, i) => a + i.x, 0)}</b></div>
-                <div className="kpi"><span className="sub">เอกสารฝั่งแคนดิเดตครบ (คน)</span><b>{tabRows.filter((i) => i.candDone).length}</b></div>
+                <div className="kpi"><span className="sub">เอกสารฝั่ง Candidate ครบ (คน)</span><b>{tabRows.filter((i) => i.candDone).length}</b></div>
                 <div className="kpi"><span className="sub">เอกสารฝั่ง Recruiter ครบ (คน)</span><b>{tabRows.filter((i) => i.recDone).length}</b></div>
                 <div className="kpi"><span className="sub">ครบทั้งสองฝั่ง (คน)</span><b>{tabRows.filter((i) => i.both).length}</b></div>
               </div>
               <SearchFilter f={flt} setF={setFlt} positions={positions} recs={recs} />
               <div className="hint" style={{ marginBottom: 10 }}>พบ {tabList.length} จาก {tabRows.length} คน</div>
-              {!tabList.length && <div className="panel">ไม่พบแคนดิเดตตามเงื่อนไข</div>}
+              {!tabList.length && <div className="panel">ไม่พบ Candidate ตามเงื่อนไข</div>}
               {tabList.map((r) => {
                 const { c, m, mr, n, miss, rn, rmiss } = r, open = sel === c.id
                 return (
@@ -356,7 +378,7 @@ export default function Staff() {
                         </div>
                       </div>
                       <div className="rr">
-                        <span className={'tag ' + (miss.length ? '' : 'ok')}>{r.candDone ? '✓ ' : ''}แคนดิเดต {n - miss.length}/{n}</span>{' '}
+                        <span className={'tag ' + (miss.length ? '' : 'ok')}>{r.candDone ? '✓ ' : ''} Candidate {n - miss.length}/{n}</span>{' '}
                         <span className={'tag ' + (rmiss.length ? '' : 'ok')}>{r.recDone ? '✓ ' : ''}Recruiter {rn - rmiss.length}/{rn}</span>{' '}
                         {c.offer_made && <span className="tag n">ส่งให้ Hiring แล้ว</span>}{' '}
                         <Tags r={r} />
@@ -364,7 +386,7 @@ export default function Staff() {
                     </div>
                     {(miss.length > 0 || rmiss.length > 0) && (
                       <div className="mgs">
-                        {miss.length > 0 && <MissChips label="แคนดิเดตยังขาด" items={miss.map((k) => [lblS(k), lbl(k)])} />}
+                        {miss.length > 0 && <MissChips label="Candidate ยังขาด" items={miss.map((k) => [lblS(k), lbl(k)])} />}
                         {rmiss.length > 0 && <MissChips label="Recruiter ยังขาด" items={rmiss.map((k) => [rlblS(k), rlbl(k)])} />}
                       </div>
                     )}
@@ -378,7 +400,7 @@ export default function Staff() {
                             <div className="sub">{c.position} · {c.email}</div>
                             <div className="ctl" style={{ marginTop: 6 }} onClick={(e) => e.stopPropagation()}>
                               <label className="f" style={{ margin: 0 }}>Recruiter ที่ดูแล
-                                <input type="text" list="recs" defaultValue={c.recruiter_name || ''} key={c.id + ':' + (c.recruiter_name || '')} onBlur={(e) => e.target.value.trim() !== (c.recruiter_name || '') && setMeta(c, { recruiter_name: e.target.value.trim() })} /></label>
+                                <RecruiterSelect names={rec.names} value={c.recruiter_name || ''} placeholder="— ยังไม่ระบุ —" onChange={(v) => v !== (c.recruiter_name || '') && setMeta(c, { recruiter_name: v })} /></label>
                               <label className="f" style={{ margin: 0 }}>ประเภท
                                 <select value={c.sales_type || ''} onChange={(e) => setMeta(c, { sales_type: e.target.value || null })}>
                                   <option value="">— ยังไม่ระบุ —</option>{TYPES.map(([k, t]) => <option key={k} value={k}>{t}</option>)}
@@ -396,7 +418,7 @@ export default function Staff() {
                           <button className="btn" onClick={() => zip(c)}>โหลด Zip (Verified)</button>
                           <button className="btn" onClick={() => purge(c)}>🗑 ลบเอกสารทั้งหมดของคนนี้</button>
                           <button className={'btn' + (c.offer_made ? '' : ' pri')} onClick={() => setOffer(c, !c.offer_made)}>{c.offer_made ? 'ยกเลิกการส่งให้ Hiring' : 'ส่งให้ Hiring รับเอกสาร'}</button>
-                          <button className="btn" onClick={() => delCand(c)}>ลบแคนดิเดต</button>
+                          <button className="btn" onClick={() => delCand(c)}>ลบ Candidate</button>
                         </div>
                         <div style={{ marginTop: 12 }}><Stepper c={c} docs={docs} rdone={!rmiss.length} /></div>
 
@@ -405,7 +427,7 @@ export default function Staff() {
                         </Fold>
 
                         <Fold title="Checklist เอกสารฝั่ง Recruiter" badge={<span className={'tag ' + (rmiss.length ? '' : 'ok')} style={{ marginLeft: 8 }}>{rn - rmiss.length}/{rn}</span>}>
-                          <div className="hint">ไฟล์ PDF ทั้งหมด · แคนดิเดตมองไม่เห็นส่วนนี้ · ไฟล์จะรวมอยู่ใน Zip ให้ Hiring โหลดได้ทีเดียว</div>
+                          <div className="hint">ไฟล์ PDF ทั้งหมด · Candidate มองไม่เห็นส่วนนี้ · ไฟล์จะรวมอยู่ใน Zip ให้ Hiring โหลดได้ทีเดียว</div>
                           <div style={{ marginTop: 10 }}>
                             <BulkUpload cats={RCATS} existing={Object.fromEntries(RCATS.map((k) => [k[0], mr.filter((d) => d.category === k[0]).length]))} onConfirm={(l) => bulkR(c, l)} busy={bz === 'bulk' + c.id} />
                           </div>
@@ -467,9 +489,9 @@ export default function Staff() {
                           })}
                         </Fold>
 
-                        <Fold title="เอกสารที่แคนดิเดตส่ง" badge={<span className="tag g" style={{ marginLeft: 8 }}>{m.length} ไฟล์</span>}>
+                        <Fold title="เอกสารที่ Candidate ส่ง" badge={<span className="tag g" style={{ marginLeft: 8 }}>{m.length} ไฟล์</span>}>
                           <ul className="files">
-                            {!m.length && <li>ยังไม่มีไฟล์จากแคนดิเดต</li>}
+                            {!m.length && <li>ยังไม่มีไฟล์จาก Candidate</li>}
                             {m.map((d) => {
                               const s = docStatus(d)
                               return (

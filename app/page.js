@@ -306,14 +306,39 @@ export default function Home() {
   return (
     <Shell right={out}>
       <section className="hero">
-        <div className="hero-top">
-          <div style={{ minWidth: 0 }}>
-            <div className="eyebrow">เอกสารสำหรับเริ่มงาน · SRF {c.srf_no}</div>
-            <h1 className="hello">สวัสดี {c.first_name || 'คุณ'}</h1>
+        <div className="pf">
+          <div className="pfp">
+            {photos[c.id]
+              ? <Avatar url={photos[c.id]} name={c.first_name + ' ' + c.last_name} size={84} portrait />
+              : <label className="noph" style={{ width: 84, height: 108 }} title="เพิ่มรูปถ่ายพนักงาน">
+                  <span>{busy === 'PH' ? 'กำลังอัปโหลด...' : <>เพิ่มรูปถ่าย<br />+</>}</span>
+                  <input type="file" hidden accept="image/*" disabled={busy === 'PH'} onChange={(e) => { up(C.PH, [...e.target.files]); e.target.value = '' }} />
+                </label>}
+            {photos[c.id] && <button type="button" className="cam" aria-label="เปลี่ยนรูปถ่าย" title="เปลี่ยนรูปถ่าย" onClick={() => goCat('PH')}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4zM12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" /></svg></button>}
+          </div>
+          <div className="pfi">
+            <div className="eyebrow">สวัสดี</div>
+            <h1 className="hello">{c.first_name} {c.last_name}</h1>
             <div className="sub">{c.position}</div>
+            <div className="meta"><span className="chip">SRF {c.srf_no}</span><span className="chip">{sexTh(c)}</span>{c.name_changed && <span className="chip">เคยเปลี่ยนชื่อ/นามสกุล</span>}</div>
+            {!pf && <button type="button" className="lnk" onClick={() => setPf({ fn: c.first_name, ln: c.last_name, male: c.is_male, nc: c.name_changed })}>แก้ไขข้อมูลของฉัน</button>}
           </div>
           <Ring n={n} total={r.length} />
         </div>
+        {pf && (
+          <div className="pfe">
+            <b>แก้ไขข้อมูลของฉัน</b>
+            <div className="hint">ชื่อไฟล์ทั้งหมดและรายการเอกสารที่ต้องส่งจะปรับตามข้อมูลใหม่อัตโนมัติ</div>
+            <div className="fgrid">
+              <label className="fld"><span className="fl2">ชื่อ (ภาษาอังกฤษ)</span><input type="text" value={pf.fn} onChange={(e) => setPf({ ...pf, fn: e.target.value })} /></label>
+              <label className="fld"><span className="fl2">นามสกุล (ภาษาอังกฤษ)</span><input type="text" value={pf.ln} onChange={(e) => setPf({ ...pf, ln: e.target.value })} /></label>
+            </div>
+            <label className="f ink"><input type="checkbox" checked={pf.male} onChange={(e) => setPf({ ...pf, male: e.target.checked })} /> เพศชาย (ต้องส่งเอกสารทหาร · ไม่ติ๊กระบบจะบันทึกเป็นเพศหญิง)</label>
+            <label className="f ink"><input type="checkbox" checked={pf.nc} onChange={(e) => setPf({ ...pf, nc: e.target.checked })} /> เคยเปลี่ยนชื่อหรือนามสกุล</label>
+            <div className="ctl"><button className="btn pri" onClick={saveProfile}>บันทึก</button><button className="btn" onClick={() => { setPf(null); setErr({}) }}>ยกเลิก</button></div>
+            {err.pf && <div className="err">{err.pf}</div>}
+          </div>
+        )}
         {next ? (
           <div className={'next' + (next.fix ? ' fix' : '')}>
             <div className="eyebrow">{next.fix ? 'HR ขอให้แก้ไข' : 'ขั้นตอนถัดไป'}</div>
@@ -337,6 +362,9 @@ export default function Home() {
         </>
       ) : (
         <>
+          <div className="top-up">
+            <BulkUpload compact cats={allCats} existing={Object.fromEntries(allCats.map((k) => [k[0], docs.filter((d) => d.category === k[0]).length]))} onConfirm={bulk} busy={!!busy} />
+          </div>
           {GROUPS.map(([g, title, sub]) => {
             const list = rows.filter((x) => grp(x) === g)
             if (!list.length) return null
@@ -361,34 +389,11 @@ export default function Home() {
             )
           })}
           <div className="quiet">
-            <Fold title="อัปโหลดหลายไฟล์พร้อมกัน (ระบบช่วยจัดหมวดให้)">
-              <BulkUpload cats={allCats} existing={Object.fromEntries(allCats.map((k) => [k[0], docs.filter((d) => d.category === k[0]).length]))} onConfirm={bulk} busy={!!busy} />
-            </Fold>
-      <div className="panel flat">
-        {!pf ? (
-          <div className="row" style={{ cursor: 'default' }}>
-            <Avatar url={photos[c.id]} name={c.first_name + ' ' + c.last_name} size={64} portrait />
-            <div style={{ flex: 1 }}><b>{c.first_name} {c.last_name}</b><div className="hint">{c.position} · SRF {c.srf_no} · {sexTh(c)}{c.name_changed ? ' · เคยเปลี่ยนชื่อ/นามสกุล' : ''}</div></div>
-            <button className="btn sm" onClick={() => setPf({ fn: c.first_name, ln: c.last_name, male: c.is_male, nc: c.name_changed })}>แก้ไขข้อมูลของฉัน</button>
-          </div>
-        ) : (
-          <>
-            <b>แก้ไขข้อมูลของฉัน</b>
-            <div className="hint">ชื่อไฟล์ทั้งหมดและรายการเอกสารที่ต้องส่งจะปรับตามข้อมูลใหม่อัตโนมัติ</div>
-            <label className="f">ชื่อ (ภาษาอังกฤษ)<input type="text" value={pf.fn} onChange={(e) => setPf({ ...pf, fn: e.target.value })} /></label>
-            <label className="f">นามสกุล (ภาษาอังกฤษ)<input type="text" value={pf.ln} onChange={(e) => setPf({ ...pf, ln: e.target.value })} /></label>
-            <label className="f ink"><input type="checkbox" checked={pf.male} onChange={(e) => setPf({ ...pf, male: e.target.checked })} /> เพศชาย (ต้องส่งเอกสารทหาร · ไม่ติ๊กระบบจะบันทึกเป็นเพศหญิง)</label>
-            <label className="f ink"><input type="checkbox" checked={pf.nc} onChange={(e) => setPf({ ...pf, nc: e.target.checked })} /> เคยเปลี่ยนชื่อหรือนามสกุล</label>
-            <div className="ctl"><button className="btn pri" onClick={saveProfile}>บันทึก</button><button className="btn" onClick={() => { setPf(null); setErr({}) }}>ยกเลิก</button></div>
-            {err.pf && <div className="err">{err.pf}</div>}
-          </>
-        )}
-      </div>
       <div className="guide">
-        <Fold title="วิธีใช้งานและเอกสารที่ต้องเตรียม" defaultOpen={!docs.length}>
+        <Fold title="วิธีใช้งานและเอกสารที่ต้องเตรียม">
           <ol>
             <li>เตรียมไฟล์ PDF, JPG หรือ PNG ขนาดไม่เกิน 10 MB ต่อไฟล์ ถ้าไม่มีไฟล์ ให้กด "📷 ถ่ายรูป / สแกนเอกสาร" ในแต่ละหมวด ระบบตัดขอบและรวมเป็น PDF ให้</li>
-            <li>อัปโหลดทีละหมวดด้านล่าง หรือใช้กล่อง "อัปโหลดหลายไฟล์พร้อมกัน" ระบบจะเดาหมวดให้และให้ตรวจก่อนยืนยัน</li>
+            <li>อัปโหลดทีละหมวดจากรายการด้านล่าง หรือใช้กล่อง "อัปโหลดหลายไฟล์พร้อมกัน" ด้านบน ระบบจะเดาหมวดให้ และถ้ารวมทุกเอกสารไว้ใน PDF ไฟล์เดียว ระบบจะแยกหน้าให้ แล้วให้ตรวจก่อนยืนยัน</li>
             <li>ทยอยส่งได้ ไม่ต้องส่งครบในครั้งเดียว ไฟล์ที่ส่งแล้วถูกบันทึกไว้</li>
             <li>ดูสถานะที่แต่ละไฟล์ เมื่อ HR ขอให้แก้ไข ให้อ่านเหตุผล แล้วกด "อัปโหลดฉบับแก้ไข" ไฟล์เก่าจะเก็บไว้ในประวัติ</li>
           </ol>

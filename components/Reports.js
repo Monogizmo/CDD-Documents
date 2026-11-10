@@ -1,88 +1,113 @@
 'use client'
-import { req, nm, RCATS, rreqd, okR, fdt } from '../lib/categories'
-import { DS, catStatus } from '../lib/status'
-import { base } from '../lib/categories'
+import { useState } from 'react'
+import { nm, base, lblS, rlblS } from '../lib/categories'
+import { STAGE_NAME } from '../lib/stage'
 import { saveBlob } from '../lib/zipper'
 
-// Reports: status by document type, by position, per candidate (+ CSV export)
+// Reports: one card per Recruiter. No company-wide overview: each Recruiter sees what is stuck on their own Candidates
+// (files waiting for review, revisions, the documents that are missing most often, who has waited longest).
 const csv = (rows) => '\ufeff' + rows.map((r) => r.map((v) => '"' + String(v ?? '').replace(/"/g, '""') + '"').join(',')).join('\n')
+const NONE = '(ยังไม่ระบุ Recruiter)'
+const days = (c) => Math.max(0, Math.floor((Date.now() - new Date(c.created_at || Date.now()).getTime()) / 86400000))
+const top = (list, key, n = 3) => {
+  const m = {}
+  list.forEach((r) => key(r).forEach((t) => { m[t] = (m[t] || 0) + 1 }))
+  return Object.entries(m).sort((a, b) => b[1] - a[1]).slice(0, n)
+}
+const nameOf = (c) => (c.first_name ? base(c) : c.email)
+
+function stats(list) {
+  const n = list.length, sum = (f) => list.reduce((a, r) => a + f(r), 0)
+  const need = sum((r) => r.n), sent = sum((r) => r.n - r.miss.length)
+  const open = list.filter((r) => !r.both).sort((a, b) => days(b.c) - days(a.c))
+  return {
+    n, sales: list.filter((r) => r.c.sales_type === 'sales').length, non: list.filter((r) => r.c.sales_type === 'non_sales').length,
+    both: list.filter((r) => r.both).length, cd: list.filter((r) => r.candDone).length, rd: list.filter((r) => r.recDone).length,
+    w: sum((r) => r.w), x: sum((r) => r.x), missPeople: list.filter((r) => r.miss.length).length,
+    pct: need ? Math.round((sent / need) * 100) : 0,
+    noDocs: list.filter((r) => !r.m.length && !r.mr.length).length,
+    hiring: list.filter((r) => r.c.offer_made).length, ready: list.filter((r) => r.both && !r.c.offer_made).length,
+    topMiss: top(list, (r) => r.miss.map(lblS)), topRMiss: top(list, (r) => r.rmiss.map(rlblS), 2),
+    oldest: open[0] || null,
+  }
+}
+function insights(s) {
+  const out = []
+  if (s.x) out.push(['warn', `มี ${s.x} ไฟล์รอ Candidate แก้ไข`])
+  if (s.w) out.push(['', `${s.w} ไฟล์ส่งมาแล้ว รอ HR ตรวจ`])
+  if (s.noDocs) out.push(['warn', `${s.noDocs} คนยังไม่ส่งเอกสารเลย`])
+  if (s.topMiss.length) out.push(['', 'เอกสารที่ Candidate ยังขาดบ่อยสุด: ' + s.topMiss.map(([t, k]) => `${t} (${k} คน)`).join(', ')])
+  if (s.topRMiss.length) out.push(['', 'ฝั่ง Recruiter ที่ยังขาดบ่อยสุด: ' + s.topRMiss.map(([t, k]) => `${t} (${k} คน)`).join(', ')])
+  if (s.oldest && days(s.oldest.c) >= 7) out.push(['warn', `ค้างนานสุด: ${nameOf(s.oldest.c)} (${days(s.oldest.c)} วันนับจากเพิ่มในระบบ)`])
+  if (s.ready) out.push(['good', `พร้อมส่งให้ Hiring ${s.ready} คน (เอกสารครบทั้งสองฝั่งแล้ว)`])
+  if (!out.length) out.push(['good', s.n && s.both === s.n ? 'เอกสารครบทั้งสองฝั่งทุกคนแล้ว' : 'ยังไม่มีงานค้าง'])
+  return out
+}
+
+function Card({ name, list, openAll }) {
+  const [open, setOpen] = useState(!!openAll)
+  const s = stats(list), ins = insights(s)
+  return (
+    <section className="rcard">
+      <div className="rch">
+        <div><h2>{name}</h2><div className="sub">{s.n} Candidate · Sales {s.sales} · Non-Sales {s.non}{s.n - s.sales - s.non > 0 ? ' · ยังไม่ระบุประเภท ' + (s.n - s.sales - s.non) : ''}</div></div>
+        <div className="sub">ครบทั้งสองฝั่ง <b style={{ color: 'var(--ink)' }}>{s.both}</b>/{s.n}{s.hiring ? ' · ส่งให้ Hiring แล้ว ' + s.hiring : ''}</div>
+      </div>
+      <div className="rmx">
+        <div className={s.w ? 'gold' : ''}><b>{s.w}</b><span>ไฟล์รอ HR ตรวจ</span></div>
+        <div className={s.x ? 'hot' : ''}><b>{s.x}</b><span>ไฟล์รอแก้ไข</span></div>
+        <div className={s.missPeople ? 'gold' : ''}><b>{s.missPeople}</b><span>คนที่ยังขาดเอกสาร</span></div>
+        <div><b>{s.cd}</b><span>ฝั่ง Candidate ครบ</span></div>
+        <div><b>{s.rd}</b><span>ฝั่ง Recruiter ครบ</span></div>
+      </div>
+      <div className="rcp"><span>เอกสารบังคับที่ส่งแล้ว</span><div className="bar"><i style={{ width: s.pct + '%' }} /></div><b style={{ color: 'var(--ink)' }}>{s.pct}%</b></div>
+      <ul className="ins">{ins.map(([k, t], i) => <li key={i} className={k}>{t}</li>)}</ul>
+      <div className="rtl">
+        <button type="button" className="btn sm" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? 'ซ่อนรายชื่อ Candidate' : 'ดูรายชื่อ Candidate (' + s.n + ')'}</button>
+        {open && (
+          <div className="scroll"><table className="tbl">
+            <thead><tr><th>ชื่อ</th><th>SRF · ตำแหน่ง</th><th>ประเภท</th><th>เอกสารบังคับ</th><th>Candidate</th><th>Recruiter</th><th>ขั้นตอน</th></tr></thead>
+            <tbody>{[...list].sort((a, b) => b.x + b.w + b.miss.length - (a.x + a.w + a.miss.length)).map((r) => (
+              <tr key={r.c.id}>
+                <td><b>{nameOf(r.c)}</b>{r.x > 0 && <> <span className="tag bad">แก้ไข {r.x}</span></>}{r.w > 0 && <> <span className="tag">รอตรวจ {r.w}</span></>}</td>
+                <td>{r.c.srf_no}<div className="sub">{r.c.position}</div></td>
+                <td>{r.c.sales_type === 'sales' ? 'Sales' : r.c.sales_type === 'non_sales' ? 'Non-Sales' : '-'}</td>
+                <td style={{ minWidth: 120 }}><div className="bar"><i style={{ width: (r.n ? ((r.n - r.miss.length) / r.n) * 100 : 0) + '%' }} /></div>{r.n - r.miss.length}/{r.n}</td>
+                <td>{r.candDone ? <span className="tag ok">ครบ</span> : <span className="tag g">ยังไม่ครบ</span>}</td>
+                <td>{r.recDone ? <span className="tag ok">ครบ</span> : <span className="tag">{r.rn - r.rmiss.length}/{r.rn}</span>}</td>
+                <td>{STAGE_NAME[r.stage]}</td>
+              </tr>
+            ))}</tbody>
+          </table></div>
+        )}
+      </div>
+    </section>
+  )
+}
 
 export default function Reports({ rows }) {
-  // status matrix: for each document type, how many candidates are in each status (only candidates who need that type)
-  const types = {}
-  rows.forEach((r) => req(r.c).forEach((k) => {
-    const t = (types[k[0]] = types[k[0]] || { k, missing: 0, received: 0, pending: 0, verified: 0, revision: 0 })
-    if (k[5] && !r.m.some((d) => d.category === k[0])) return          // optional + not sent: not counted
-    t[catStatus(r.m.filter((d) => d.category === k[0]))]++
-  }))
-  const byPos = {}
-  rows.forEach((r) => {
-    const p = (byPos[r.c.position] = byPos[r.c.position] || { n: 0, done: 0, cd: 0, rd: 0, sent: 0, need: 0 })
-    p.n++; if (r.both) p.done++; if (r.candDone) p.cd++; if (r.recDone) p.rd++; p.sent += r.n - r.miss.length; p.need += r.n
-  })
-  // per recruiter: who is carrying how much, and what is stuck with them
-  const byRec = {}
-  rows.forEach((r) => {
-    const k = r.c.recruiter_name || '(ยังไม่ระบุ Recruiter)', p = (byRec[k] = byRec[k] || { n: 0, sales: 0, non: 0, w: 0, x: 0, miss: 0, rmiss: 0, cd: 0, rd: 0, both: 0 })
-    p.n++; if (r.c.sales_type === 'sales') p.sales++; else if (r.c.sales_type === 'non_sales') p.non++
-    p.w += r.w; p.x += r.x; if (r.miss.length) p.miss++; if (r.rmiss.length) p.rmiss++; if (r.candDone) p.cd++; if (r.recDone) p.rd++; if (r.both) p.both++
-  })
-  const pct = (r) => (r.n ? Math.round(((r.n - r.miss.length) / r.n) * 100) : 0)
-  const head = ['ชื่อ', 'อีเมล', 'SRF', 'ตำแหน่ง', 'Recruiter', 'ประเภท', 'ส่งเอกสารบังคับ', 'ขาดเอกสารบังคับ', 'Received', 'Pending', 'Verified', 'Revision Required', 'แคนดิเดตครบ (Verified)', 'Recruiter ครบ', 'ครบทั้งสองฝั่ง', 'ขั้นตอน']
-  const lines = rows.map((r) => [base(r.c), r.c.email, r.c.srf_no, r.c.position, r.c.recruiter_name || '', r.c.sales_type === 'sales' ? 'Sales' : r.c.sales_type === 'non_sales' ? 'Non-Sales' : '', `${r.n - r.miss.length}/${r.n}`, r.miss.map((k) => nm(k[0]) + k[1]).join(' | '), r.rc, r.pd, r.m.filter((d) => d.status === 'ok').length, r.x, `${r.rn - r.rmiss.length}/${r.rn}`, r.candDone ? 'ครบ' : 'ยังไม่ครบ', r.recDone ? 'ครบ' : 'ยังไม่ครบ', r.both ? 'ครบ' : 'ยังไม่ครบ', r.stage])
-  const total = rows.length, done = rows.filter((r) => r.both).length, cdone = rows.filter((r) => r.candDone).length, rdone = rows.filter((r) => r.recDone).length
+  const [pick, setPick] = useState('')
+  const by = {}
+  rows.forEach((r) => { const k = r.c.recruiter_name || NONE; (by[k] = by[k] || []).push(r) })
+  // busiest Recruiter first: files waiting + revisions + people with missing documents
+  const load = (l) => l.reduce((a, r) => a + r.w + r.x + (r.miss.length ? 1 : 0), 0)
+  const names = Object.keys(by).sort((a, b) => load(by[b]) - load(by[a]) || by[b].length - by[a].length || a.localeCompare(b))
+  const shown = pick && by[pick] ? [pick] : names
+
+  const head = ['Recruiter', 'ชื่อ', 'อีเมล', 'SRF', 'ตำแหน่ง', 'ประเภท', 'ส่งเอกสารบังคับ', 'ขาดเอกสารบังคับ', 'Received', 'Pending', 'Verified', 'Revision Required', 'Recruiter checklist', 'ฝั่ง Candidate ครบ', 'ฝั่ง Recruiter ครบ', 'ครบทั้งสองฝั่ง', 'ขั้นตอน']
+  const lines = names.flatMap((k) => by[k].map((r) => [r.c.recruiter_name || '', nameOf(r.c), r.c.email, r.c.srf_no, r.c.position, r.c.sales_type === 'sales' ? 'Sales' : r.c.sales_type === 'non_sales' ? 'Non-Sales' : '', `${r.n - r.miss.length}/${r.n}`, r.miss.map((c) => nm(c[0]) + c[1]).join(' | '), r.rc, r.pd, r.m.filter((d) => d.status === 'ok').length, r.x, `${r.rn - r.rmiss.length}/${r.rn}`, r.candDone ? 'ครบ' : 'ยังไม่ครบ', r.recDone ? 'ครบ' : 'ยังไม่ครบ', r.both ? 'ครบ' : 'ยังไม่ครบ', STAGE_NAME[r.stage]]))
+
+  if (!rows.length) return <div className="calm">ยังไม่มี Candidate</div>
   return (
     <>
-      <div className="kpis">
-        <div className="kpi"><span className="sub">ผู้สมัครทั้งหมด</span><b>{total}</b></div>
-        <div className="kpi"><span className="sub">เอกสารฝั่งแคนดิเดตครบ</span><b>{cdone}</b></div>
-        <div className="kpi"><span className="sub">เอกสารฝั่ง Recruiter ครบ</span><b>{rdone}</b></div>
-        <div className="kpi"><span className="sub">ครบทั้งสองฝั่ง</span><b>{done}</b></div>
-        <div className="kpi"><span className="sub">มีไฟล์ Revision Required</span><b>{rows.filter((r) => r.x).length}</b></div>
-        <div className="kpi"><span className="sub">ยังขาดเอกสารบังคับ</span><b>{rows.filter((r) => r.miss.length).length}</b></div>
+      <div className="rtool">
+        <select value={pick} aria-label="Recruiter" onChange={(e) => setPick(e.target.value)}>
+          <option value="">ทุก Recruiter (เรียงตามงานค้างมากไปน้อย)</option>
+          {names.map((k) => <option key={k} value={k}>{k} ({by[k].length})</option>)}
+        </select>
+        <button type="button" className="btn sm" onClick={() => saveBlob(new Blob([csv([head, ...lines])], { type: 'text/csv;charset=utf-8' }), `report-by-recruiter-${new Date().toISOString().slice(0, 10)}.csv`)}>Export CSV</button>
       </div>
-      <div className="panel">
-        <b>แยกตาม Recruiter</b><div className="hint">เรียงตามงานที่ค้างอยู่ (ไฟล์รอตรวจ + รอแก้ไข) มากไปน้อย</div>
-        <div className="scroll"><table className="tbl">
-          <thead><tr><th>Recruiter</th><th>แคนดิเดต</th><th>Sales</th><th>Non-Sales</th><th>ไฟล์รอตรวจ</th><th>รอแก้ไข</th><th>ยังขาดเอกสาร (คน)</th><th>แคนดิเดตครบ</th><th>Recruiter ครบ</th><th>ครบทั้งสองฝั่ง</th></tr></thead>
-          <tbody>{Object.entries(byRec).sort((a, b) => b[1].w + b[1].x - (a[1].w + a[1].x) || b[1].n - a[1].n).map(([k, v]) => (
-            <tr key={k}><td><b>{k}</b></td><td>{v.n}</td><td>{v.sales}</td><td>{v.non}</td><td>{v.w ? <span className="tag">{v.w}</span> : <span className="mute">0</span>}</td><td>{v.x ? <span className="tag bad">{v.x}</span> : <span className="mute">0</span>}</td><td>{v.miss}</td><td>{v.cd}</td><td>{v.rd}</td><td><b>{v.both}</b></td></tr>
-          ))}</tbody>
-        </table></div>
-      </div>
-      <div className="panel">
-        <b>สถานะเอกสารแยกตามประเภท</b><div className="hint">นับจำนวนแคนดิเดตในแต่ละสถานะ (เอกสารไม่บังคับที่ยังไม่ส่งไม่นับ)</div>
-        <div className="scroll"><table className="tbl">
-          <thead><tr><th>เอกสาร</th>{Object.keys(DS).map((s) => <th key={s}>{DS[s][0]}</th>)}</tr></thead>
-          <tbody>{Object.values(types).sort((a, b) => (a.k[0] > b.k[0] ? 1 : -1)).map((t) => (
-            <tr key={t.k[0]}><td>{nm(t.k[0])}{t.k[1]}</td>{Object.keys(DS).map((s) => <td key={s}>{t[s] ? <span className={'tag ' + DS[s][2]}>{t[s]}</span> : <span className="mute">0</span>}</td>)}</tr>
-          ))}</tbody>
-        </table></div>
-      </div>
-      <div className="panel">
-        <b>เอกสารฝั่ง Recruiter</b>
-        <div className="scroll"><table className="tbl">
-          <thead><tr><th>เอกสาร</th><th>ส่งแล้ว</th><th>ยังไม่ครบ (บังคับ)</th></tr></thead>
-          <tbody>{RCATS.map((k) => {
-            const need = rows.filter((r) => rreqd(r.c).some((x) => x[0] === k[0])), have = rows.filter((r) => r.mr.some((d) => d.category === k[0]))
-            return <tr key={k[0]}><td>{k[6] ? k[6] + ' ' : ''}{k[1]}</td><td>{have.length}/{total}</td><td>{k[5] ? <span className="mute">ไม่บังคับ</span> : need.filter((r) => !okR(r.mr, r.c, k)).length}</td></tr>
-          })}</tbody>
-        </table></div>
-      </div>
-      <div className="panel">
-        <b>แยกตามตำแหน่ง</b>
-        <div className="scroll"><table className="tbl">
-          <thead><tr><th>ตำแหน่ง</th><th>ผู้สมัคร</th><th>ฝั่งแคนดิเดตครบ</th><th>ฝั่ง Recruiter ครบ</th><th>ครบทั้งสองฝั่ง</th><th>ความคืบหน้าเอกสารบังคับ</th></tr></thead>
-          <tbody>{Object.entries(byPos).map(([p, v]) => <tr key={p}><td>{p}</td><td>{v.n}</td><td>{v.cd}</td><td>{v.rd}</td><td>{v.done}</td><td style={{ minWidth: 140 }}><div className="bar"><i style={{ width: (v.need ? (v.sent / v.need) * 100 : 0) + '%' }} /></div>{v.need ? Math.round((v.sent / v.need) * 100) : 0}%</td></tr>)}</tbody>
-        </table></div>
-      </div>
-      <div className="panel">
-        <div className="fl"><b>รายคน</b><button type="button" className="btn sm" onClick={() => saveBlob(new Blob([csv([head, ...lines])], { type: 'text/csv;charset=utf-8' }), `report-${new Date().toISOString().slice(0, 10)}.csv`)}>Export CSV</button></div>
-        <div className="scroll"><table className="tbl">
-          <thead><tr><th>ชื่อ</th><th>SRF</th><th>ตำแหน่ง</th><th>Recruiter</th><th>เอกสารบังคับ</th><th>Received</th><th>Pending</th><th>Revision</th><th>แคนดิเดต</th><th>Recruiter</th></tr></thead>
-          <tbody>{rows.map((r) => <tr key={r.c.id}><td>{r.c.first_name ? base(r.c) : r.c.email}</td><td>{r.c.srf_no}</td><td>{r.c.position}</td><td>{r.c.recruiter_name || '-'}</td><td>{pct(r)}% ({r.n - r.miss.length}/{r.n})</td><td>{r.rc}</td><td>{r.pd}</td><td>{r.x ? <span className="tag bad">{r.x}</span> : 0}</td><td>{r.candDone ? <span className="tag ok">ครบ</span> : <span className="tag g">ยังไม่ครบ</span>}</td><td>{r.recDone ? <span className="tag ok">ครบ ({r.rn}/{r.rn})</span> : <span className="tag">{r.rn - r.rmiss.length}/{r.rn}</span>}</td></tr>)}</tbody>
-        </table></div>
-      </div>
+      <div className="rcg">{shown.map((k) => <Card key={k + (pick ? ':one' : '')} name={k} list={by[k]} openAll={!!pick} />)}</div>
     </>
   )
 }

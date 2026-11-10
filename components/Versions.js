@@ -32,8 +32,8 @@ export default function Versions({ chain, events = [], onOpen, openLabel = 'เ�
         {log.map((e) => (
           <li key={e.id}>
             <span className="tld" />
-            <div><b>{EV[e.action]}</b> <span className="mute">v{e.rev} · {fdt(e.created_at)} · {e.actor_role === 'candidate' ? 'แคนดิเดต' : e.actor_email || e.actor_role}</span>
-              {e.action === 'comment' && <span className={'tag ' + (e.visible ? 'n' : 'g')} style={{ marginLeft: 6 }}>{e.visible ? 'แคนดิเดตเห็น' : 'ภายใน HR'}</span>}
+            <div><b>{EV[e.action]}</b> <span className="mute">v{e.rev} · {fdt(e.created_at)} · {e.actor_role === 'candidate' ? 'Candidate' : e.actor_email || e.actor_role}</span>
+              {e.action === 'comment' && <span className={'tag ' + (e.visible ? 'n' : 'g')} style={{ marginLeft: 6 }}>{e.visible ? 'Candidate เห็น' : 'ภายใน HR'}</span>}
               {e.comment && <div className="cm">{e.comment}</div>}</div>
           </li>
         ))}
