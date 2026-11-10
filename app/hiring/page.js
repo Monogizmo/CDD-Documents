@@ -5,8 +5,8 @@ import { base, fname, fdt, isR, typeName } from '../../lib/categories'
 import { BUCKET } from '../../lib/upload'
 import { eligible, addFiles, zipName, zipCandidate, saveBlob, JSZip } from '../../lib/zipper'
 import { usePhotoUrls } from '../../lib/photos'
-import OtpLogin from '../../components/OtpLogin'
-import CodeLogin from '../../components/CodeLogin'
+import { purgeDocs } from '../../lib/purge'
+import LoginScreen from '../../components/LoginScreen'
 import Avatar from '../../components/Avatar'
 
 // /hiring : one place where Hiring picks up every document.
@@ -59,7 +59,7 @@ export default function Hiring() {
 
   const out = ses ? <button className="btn sm" onClick={() => supabase.auth.signOut()}>ออกจากระบบ</button> : null
   if (ses === undefined) return null
-  if (!ses) return <Shell><OtpLogin title="สำหรับทีม Hiring" /><CodeLogin mode="hiring" /></Shell>
+  if (!ses) return <LoginScreen role="hiring" />
   if (role === null) return <Shell right={out}>กำลังโหลด...</Shell>
   if (!['hiring', 'admin', 'recruiter'].includes(role)) return <Shell right={out}><div className="panel">อีเมลนี้ยังไม่มีสิทธิ์ใช้งานหน้านี้ กรุณาติดต่อ Recruiter</div></Shell>
 
@@ -91,6 +91,20 @@ export default function Hiring() {
     setBusy(false)
   }
 
+  // delete = Storage files + rows, for people whose files were downloaded and kept elsewhere
+  async function purge(targets) {
+    const names = targets.map((c) => (c.first_name ? base(c) : c.email))
+    if (!confirm('ลบเอกสารทั้งหมดของ ' + (targets.length > 1 ? targets.length + ' คน' : names[0]) + ' ออกจากระบบถาวร?\n\nกรุณาตรวจว่าโหลดไปเก็บแล้ว ลบแล้วกู้คืนไม่ได้')) return
+    setBusy(true); setMsg('')
+    let fail = 0
+    for (let i = 0; i < targets.length; i++) {
+      setMsg(`กำลังลบ ${i + 1}/${targets.length}: ${names[i]}`)
+      try { await purgeDocs(targets[i].id) } catch { fail++ }
+    }
+    setMsg(fail ? 'ลบไม่สำเร็จ ' + fail + ' คน ลองใหม่อีกครั้ง' : 'ลบเอกสารแล้ว')
+    setBusy(false); setSel({}); load()
+  }
+
   return (
     <Shell right={out}>
       <h1 className="pgt">เอกสารที่พร้อมรับ</h1>
@@ -109,6 +123,7 @@ export default function Hiring() {
           </select>
           <button type="button" className="btn pri" disabled={busy || !chosen.length} onClick={() => run(chosen)}>{busy ? 'กำลังทำงาน...' : `ดาวน์โหลดที่เลือก (${chosen.length} คน)`}</button>
           <button type="button" className="btn" disabled={busy || !total} onClick={() => run(list)}>ดาวน์โหลดทั้งหมด ({list.length} คน · {total} ไฟล์)</button>
+          <button type="button" className="btn" disabled={busy || !chosen.length} onClick={() => purge(chosen)}>🗑 ลบเอกสารของที่เลือก ({chosen.length} คน)</button>
         </div>
         {msg && <div className="hint" style={{ marginTop: 8 }}>{msg}</div>}
       </div>
@@ -129,7 +144,8 @@ export default function Hiring() {
               <div className="rr">
                 <span className="tag ok">{l.length} ไฟล์พร้อมรับ</span>{' '}
                 <button type="button" className="btn sm" onClick={() => setOpen(isOpen ? null : c.id)}>{isOpen ? 'ซ่อนไฟล์' : 'ดูไฟล์'}</button>{' '}
-                <button type="button" className="btn pri sm" disabled={busy || !l.length} onClick={() => run([c])}>โหลด Zip</button>
+                <button type="button" className="btn pri sm" disabled={busy || !l.length} onClick={() => run([c])}>โหลด Zip</button>{' '}
+                <button type="button" className="btn sm" disabled={busy || !l.length} onClick={() => purge([c])}>🗑 ลบเอกสาร</button>
               </div>
             </div>
             {isOpen && (

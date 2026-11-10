@@ -1,5 +1,6 @@
 'use client'
 import Avatar from './Avatar'
+import TodayInbox from './TodayInbox'
 import { Spark, Donut, LineChart, PALETTE } from './Charts'
 import { STAGES, STAGE_NAME, chips } from '../lib/stage'
 import { base } from '../lib/categories'
@@ -8,7 +9,7 @@ import { base } from '../lib/categories'
 const MONTHS = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
 const nameOf = (c) => (c.first_name ? base(c) : c.email)
 
-export default function Dashboard({ rows, photos, onOpen, onZip, now = new Date() }) {
+export default function Dashboard({ rows, photos, onOpen, onReview, onZip, now = new Date() }) {
   const total = rows.length
   const sent = rows.reduce((a, r) => a + (r.n - r.miss.length), 0), need = rows.reduce((a, r) => a + r.n, 0)
   const pct = need ? Math.round((sent / need) * 100) : 0
@@ -37,6 +38,7 @@ export default function Dashboard({ rows, photos, onOpen, onZip, now = new Date(
 
   return (
     <>
+      <TodayInbox rows={rows} photos={photos} onOpen={onOpen} onReview={onReview || onOpen} now={now} />
       <div className="dg">
         <div className="s3 stack">
           <div className="panel">

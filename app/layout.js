@@ -1,8 +1,9 @@
 import './globals.css'
-import { Noto_Sans_Thai } from 'next/font/google'
+import { Noto_Sans_Thai, IBM_Plex_Sans_Thai } from 'next/font/google'
 const font = Noto_Sans_Thai({ subsets: ['thai', 'latin'], weight: ['400', '600', '700'] })
+const plex = IBM_Plex_Sans_Thai({ subsets: ['thai', 'latin'], weight: ['400', '500', '600', '700'], variable: '--font-plex' })
 export const metadata = { title: 'Candidate Document Portal' }
 export const viewport = { width: 'device-width', initialScale: 1, viewportFit: 'cover' }
 export default function RootLayout({ children }) {
-  return (<html lang="th"><body className={font.className}>{children}</body></html>)
+  return (<html lang="th"><body className={font.className + ' ' + plex.variable}>{children}</body></html>)
 }

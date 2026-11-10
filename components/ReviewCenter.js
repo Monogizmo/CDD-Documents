@@ -7,12 +7,13 @@ import { DS, docStatus, catStatus, chainOf } from '../lib/status'
 import Avatar from './Avatar'
 import Fold from './Fold'
 import Versions from './Versions'
+import DocViewer from './DocViewer'
 
 // Document Review Center: every uploaded file of one candidate on a single screen.
 // Preview + Approve / Request Revision / Comment + history, no need to open files one by one.
 const Tag = ({ s }) => <span className={'tag ' + DS[s][2]}>{DS[s][0]} · {DS[s][1]}</span>
 
-function DocCard({ d, c, m, chain, events, urls, onReview, onComment, onOpened }) {
+function DocCard({ d, c, m, chain, events, urls, loaded, onReview, onComment, onOpened, onDelete, onSaveEdit }) {
   const ref = useRef(null)
   const [seen, setSeen] = useState(false)
   const [vi, setVi] = useState(chain.length - 1)
@@ -44,14 +45,16 @@ function DocCard({ d, c, m, chain, events, urls, onReview, onComment, onOpened }
       {!latest && <div className="err">กำลังดูไฟล์ฉบับเก่า (v{file.rev}) การตรวจมีผลกับฉบับล่าสุดเท่านั้น</div>}
       <div className="pv">
         {!seen ? <div className="sub">กำลังรอแสดงตัวอย่าง...</div>
-          : !url ? <div className="sub">กำลังโหลดไฟล์...</div>
-          : file.ext === 'pdf' ? <iframe src={url} title={file.original_name} loading="lazy" />
-          : <img src={url} alt={file.original_name} />}
+          : !url ? (loaded
+            ? <div className="err" style={{ padding: 12 }}>ไม่พบไฟล์นี้ใน Storage (อาจถูกลบออกจาก Supabase โดยตรง) กดปุ่ม "ลบไฟล์" เพื่อเคลียร์รายการนี้ แล้วให้แคนดิเดตอัปโหลดใหม่</div>
+            : <div className="sub">กำลังโหลดไฟล์...</div>)
+          : <DocViewer key={file.id + file.storage_path} url={url} ext={file.ext} name={file.original_name} canEdit={latest} onSave={(b, e) => onSaveEdit(d, b, e)} />}
       </div>
       <div className="ctl">
         {d.status !== 'ok' && <button type="button" className="btn pri sm" disabled={!seen || !latest} onClick={() => onReview(d, 'ok')}>✓ Approve</button>}
         {d.status !== 'fix' && <button type="button" className="btn sm" disabled={!latest} onClick={() => setRev(rev === null ? '' : null)}>↺ Request Revision</button>}
         {d.status !== 'wait' && <button type="button" className="btn sm" disabled={!latest} onClick={() => onReview(d, 'wait')}>ยกเลิกผลตรวจ</button>}
+        <button type="button" className="btn sm" onClick={() => onDelete(d)}>🗑 ลบไฟล์</button>
         {url && <a className="btn sm" href={url} target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>เปิดในแท็บใหม่</a>}
       </div>
       {rev !== null && (
@@ -74,15 +77,19 @@ function DocCard({ d, c, m, chain, events, urls, onReview, onComment, onOpened }
   )
 }
 
-export default function ReviewCenter({ c, m, hist, events, photo, onBack, onReview, onComment, onOpened }) {
+export default function ReviewCenter({ c, m, hist, events, photo, onBack, onReview, onComment, onOpened, onDelete, onSaveEdit }) {
   const [urls, setUrls] = useState({})
+  const [loaded, setLoaded] = useState(false)
   const files = [...m, ...hist]
-  const key = files.map((d) => d.id).sort().join(',')
+  const key = files.map((d) => d.id + d.storage_path).sort().join(',')
   useEffect(() => {
     let off = false
-    if (!files.length) { setUrls({}); return }
+    if (!files.length) { setUrls({}); setLoaded(true); return }
+    setLoaded(false)
     supabase.storage.from(BUCKET).createSignedUrls(files.map((d) => d.storage_path), 3600).then(({ data }) => {
-      if (off || !data) return
+      if (off) return
+      setLoaded(true)
+      if (!data) return
       const byPath = Object.fromEntries(data.filter((r) => r.signedUrl).map((r) => [r.path, r.signedUrl]))
       setUrls(Object.fromEntries(files.filter((d) => byPath[d.storage_path]).map((d) => [d.id, byPath[d.storage_path]])))
     })
@@ -123,7 +130,7 @@ export default function ReviewCenter({ c, m, hist, events, photo, onBack, onRevi
           {missing.length > 0 && <div className="panel" style={{ boxShadow: 'none' }}><span className="tag g">Missing · ยังไม่ได้รับ</span><div className="err">{missing.map((k) => nm(k[0]) + k[1]).join(' · ')}</div></div>}
           {!m.length && <div className="panel">แคนดิเดตยังไม่ได้อัปโหลดไฟล์</div>}
           {cats.map((k) => m.filter((d) => d.category === k[0]).map((d) => (
-            <DocCard key={d.id} d={d} c={c} m={m} chain={chainOf(d, hist)} events={events} urls={urls} onReview={onReview} onComment={onComment} onOpened={onOpened} />
+            <DocCard key={d.id} d={d} c={c} m={m} chain={chainOf(d, hist)} events={events} urls={urls} loaded={loaded} onReview={onReview} onComment={onComment} onOpened={onOpened} onDelete={onDelete} onSaveEdit={onSaveEdit} />
           )))}
         </div>
       </div>

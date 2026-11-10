@@ -20,9 +20,16 @@ export default function Reports({ rows }) {
     const p = (byPos[r.c.position] = byPos[r.c.position] || { n: 0, done: 0, cd: 0, rd: 0, sent: 0, need: 0 })
     p.n++; if (r.both) p.done++; if (r.candDone) p.cd++; if (r.recDone) p.rd++; p.sent += r.n - r.miss.length; p.need += r.n
   })
+  // per recruiter: who is carrying how much, and what is stuck with them
+  const byRec = {}
+  rows.forEach((r) => {
+    const k = r.c.recruiter_name || '(ยังไม่ระบุ Recruiter)', p = (byRec[k] = byRec[k] || { n: 0, sales: 0, non: 0, w: 0, x: 0, miss: 0, rmiss: 0, cd: 0, rd: 0, both: 0 })
+    p.n++; if (r.c.sales_type === 'sales') p.sales++; else if (r.c.sales_type === 'non_sales') p.non++
+    p.w += r.w; p.x += r.x; if (r.miss.length) p.miss++; if (r.rmiss.length) p.rmiss++; if (r.candDone) p.cd++; if (r.recDone) p.rd++; if (r.both) p.both++
+  })
   const pct = (r) => (r.n ? Math.round(((r.n - r.miss.length) / r.n) * 100) : 0)
-  const head = ['ชื่อ', 'อีเมล', 'SRF', 'ตำแหน่ง', 'ส่งเอกสารบังคับ', 'ขาดเอกสารบังคับ', 'Received', 'Pending', 'Verified', 'Revision Required', 'แคนดิเดตครบ (Verified)', 'Recruiter ครบ', 'ครบทั้งสองฝั่ง', 'ขั้นตอน']
-  const lines = rows.map((r) => [base(r.c), r.c.email, r.c.srf_no, r.c.position, `${r.n - r.miss.length}/${r.n}`, r.miss.map((k) => nm(k[0]) + k[1]).join(' | '), r.rc, r.pd, r.m.filter((d) => d.status === 'ok').length, r.x, `${r.rn - r.rmiss.length}/${r.rn}`, r.candDone ? 'ครบ' : 'ยังไม่ครบ', r.recDone ? 'ครบ' : 'ยังไม่ครบ', r.both ? 'ครบ' : 'ยังไม่ครบ', r.stage])
+  const head = ['ชื่อ', 'อีเมล', 'SRF', 'ตำแหน่ง', 'Recruiter', 'ประเภท', 'ส่งเอกสารบังคับ', 'ขาดเอกสารบังคับ', 'Received', 'Pending', 'Verified', 'Revision Required', 'แคนดิเดตครบ (Verified)', 'Recruiter ครบ', 'ครบทั้งสองฝั่ง', 'ขั้นตอน']
+  const lines = rows.map((r) => [base(r.c), r.c.email, r.c.srf_no, r.c.position, r.c.recruiter_name || '', r.c.sales_type === 'sales' ? 'Sales' : r.c.sales_type === 'non_sales' ? 'Non-Sales' : '', `${r.n - r.miss.length}/${r.n}`, r.miss.map((k) => nm(k[0]) + k[1]).join(' | '), r.rc, r.pd, r.m.filter((d) => d.status === 'ok').length, r.x, `${r.rn - r.rmiss.length}/${r.rn}`, r.candDone ? 'ครบ' : 'ยังไม่ครบ', r.recDone ? 'ครบ' : 'ยังไม่ครบ', r.both ? 'ครบ' : 'ยังไม่ครบ', r.stage])
   const total = rows.length, done = rows.filter((r) => r.both).length, cdone = rows.filter((r) => r.candDone).length, rdone = rows.filter((r) => r.recDone).length
   return (
     <>
@@ -33,6 +40,15 @@ export default function Reports({ rows }) {
         <div className="kpi"><span className="sub">ครบทั้งสองฝั่ง</span><b>{done}</b></div>
         <div className="kpi"><span className="sub">มีไฟล์ Revision Required</span><b>{rows.filter((r) => r.x).length}</b></div>
         <div className="kpi"><span className="sub">ยังขาดเอกสารบังคับ</span><b>{rows.filter((r) => r.miss.length).length}</b></div>
+      </div>
+      <div className="panel">
+        <b>แยกตาม Recruiter</b><div className="hint">เรียงตามงานที่ค้างอยู่ (ไฟล์รอตรวจ + รอแก้ไข) มากไปน้อย</div>
+        <div className="scroll"><table className="tbl">
+          <thead><tr><th>Recruiter</th><th>แคนดิเดต</th><th>Sales</th><th>Non-Sales</th><th>ไฟล์รอตรวจ</th><th>รอแก้ไข</th><th>ยังขาดเอกสาร (คน)</th><th>แคนดิเดตครบ</th><th>Recruiter ครบ</th><th>ครบทั้งสองฝั่ง</th></tr></thead>
+          <tbody>{Object.entries(byRec).sort((a, b) => b[1].w + b[1].x - (a[1].w + a[1].x) || b[1].n - a[1].n).map(([k, v]) => (
+            <tr key={k}><td><b>{k}</b></td><td>{v.n}</td><td>{v.sales}</td><td>{v.non}</td><td>{v.w ? <span className="tag">{v.w}</span> : <span className="mute">0</span>}</td><td>{v.x ? <span className="tag bad">{v.x}</span> : <span className="mute">0</span>}</td><td>{v.miss}</td><td>{v.cd}</td><td>{v.rd}</td><td><b>{v.both}</b></td></tr>
+          ))}</tbody>
+        </table></div>
       </div>
       <div className="panel">
         <b>สถานะเอกสารแยกตามประเภท</b><div className="hint">นับจำนวนแคนดิเดตในแต่ละสถานะ (เอกสารไม่บังคับที่ยังไม่ส่งไม่นับ)</div>
@@ -63,8 +79,8 @@ export default function Reports({ rows }) {
       <div className="panel">
         <div className="fl"><b>รายคน</b><button type="button" className="btn sm" onClick={() => saveBlob(new Blob([csv([head, ...lines])], { type: 'text/csv;charset=utf-8' }), `report-${new Date().toISOString().slice(0, 10)}.csv`)}>Export CSV</button></div>
         <div className="scroll"><table className="tbl">
-          <thead><tr><th>ชื่อ</th><th>SRF</th><th>ตำแหน่ง</th><th>เอกสารบังคับ</th><th>Received</th><th>Pending</th><th>Revision</th><th>แคนดิเดต</th><th>Recruiter</th></tr></thead>
-          <tbody>{rows.map((r) => <tr key={r.c.id}><td>{r.c.first_name ? base(r.c) : r.c.email}</td><td>{r.c.srf_no}</td><td>{r.c.position}</td><td>{pct(r)}% ({r.n - r.miss.length}/{r.n})</td><td>{r.rc}</td><td>{r.pd}</td><td>{r.x ? <span className="tag bad">{r.x}</span> : 0}</td><td>{r.candDone ? <span className="tag ok">ครบ</span> : <span className="tag g">ยังไม่ครบ</span>}</td><td>{r.recDone ? <span className="tag ok">ครบ ({r.rn}/{r.rn})</span> : <span className="tag">{r.rn - r.rmiss.length}/{r.rn}</span>}</td></tr>)}</tbody>
+          <thead><tr><th>ชื่อ</th><th>SRF</th><th>ตำแหน่ง</th><th>Recruiter</th><th>เอกสารบังคับ</th><th>Received</th><th>Pending</th><th>Revision</th><th>แคนดิเดต</th><th>Recruiter</th></tr></thead>
+          <tbody>{rows.map((r) => <tr key={r.c.id}><td>{r.c.first_name ? base(r.c) : r.c.email}</td><td>{r.c.srf_no}</td><td>{r.c.position}</td><td>{r.c.recruiter_name || '-'}</td><td>{pct(r)}% ({r.n - r.miss.length}/{r.n})</td><td>{r.rc}</td><td>{r.pd}</td><td>{r.x ? <span className="tag bad">{r.x}</span> : 0}</td><td>{r.candDone ? <span className="tag ok">ครบ</span> : <span className="tag g">ยังไม่ครบ</span>}</td><td>{r.recDone ? <span className="tag ok">ครบ ({r.rn}/{r.rn})</span> : <span className="tag">{r.rn - r.rmiss.length}/{r.rn}</span>}</td></tr>)}</tbody>
         </table></div>
       </div>
     </>

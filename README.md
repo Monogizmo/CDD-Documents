@@ -69,3 +69,21 @@ Run `007_other_doc_title.sql` after 006. The title typed after upload becomes th
 - Locked PDF uploaded by a candidate: the portal asks for the file's password (3 tries), unlocks it in the browser (page re-drawn as a new PDF) and uploads the unlocked copy. The password is never sent or stored. Recruiter uploads use a simple prompt.
 - Add Candidate asks for the Recruiter name and Sales / Non-Sales. Candidate List has Sales / Non-Sales tabs (plus "not set" for older candidates) and a Recruiter filter; type and recruiter can be edited inside the opened card.
 - Missing documents are shown as small chips ("2-7 Receipt") with a "+N" toggle instead of one long red line.
+
+## Update 012: delete from the web, viewer tools for every file
+- Run `supabase/migrations/011_review_log_edit_delete.sql` (review log also records edit / delete).
+- Review Center: every file (PDF or picture) opens in `components/DocViewer.js` with zoom, rotate page, rotate all, move page, delete page and "save". Saving keeps PDF text (pdf-lib), replaces the stored file, removes the old one, and puts an Approved file back to "waiting" so it must be approved again.
+- "🗑 ลบไฟล์" on every file card in Review Center (and the existing delete in the candidate card): removes the Storage file AND the row in `documents` (older versions included) and writes a text-only log line. Deleting only inside the Supabase Storage screen leaves the row behind; the Review Center now says "file not found in Storage" with the delete button to clean it up.
+
+## Update 012: delete all documents of a candidate
+- `app/api/purge-docs/route.js` (server, uses `SUPABASE_SERVICE_ROLE_KEY`): deletes every Storage file of a candidate (also files with no table row) and the rows in `documents`, then writes an `audit_log` line. Recruiter/admin: any candidate. Hiring: only candidates handed over to Hiring.
+- Buttons: staff candidate card "🗑 ลบเอกสารทั้งหมดของคนนี้"; /hiring per candidate "🗑 ลบเอกสาร" and "ลบเอกสารของที่เลือก".
+- Per-file delete (🗑 ลบไฟล์) and the page viewer with rotate / reorder / delete page / Save (`components/DocViewer.js`) are in Document Review. If the viewer cannot start on a machine it now says so before falling back to the browser's own viewer.
+
+## Update 013: "Quiet Intelligence" redesign
+- Theme tokens in `:root` (warm paper, hairlines, yellow only for the main action) + the v2 block at the end of `app/globals.css`.
+- Candidate (`app/page.js`): hello + progress ring + one "next step" card; documents as a to-do list grouped Needs action / Waiting for HR / Done / Optional, tap a row to open its upload area; bulk upload, my info and the guide are quiet folds below. Status and summary are on the second tab.
+- HR: top navigation instead of the left sidebar (bottom bar on phones); Dashboard starts with `components/TodayInbox.js` ("what needs me today?": files to review, waiting for recruiter-side documents, ready for Hiring, waiting for candidate fixes, overdue); Reports start with a per-recruiter table.
+
+## Update 014: new sign-in screen
+- `components/LoginScreen.js` replaces the old login panels on `/`, `/staff` and `/hiring` (same Supabase email-OTP and team-code logic). Role switch (Candidate / HR Team / Hiring) links to the three entrances. Styles: `.lx*` at the end of `app/globals.css`; palette variables at the top of `.lx` (Deep Navy, Sage, Ivory + CI yellow accents). Font: IBM Plex Sans Thai (`app/layout.js`).

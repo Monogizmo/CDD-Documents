@@ -5,8 +5,7 @@ import { req, reqd, okCat, fname, nm, lbl, fdt, C, sexTh, redactTxt } from '../l
 import { loadImg, toJpg, mkPdf } from '../lib/images'
 import { BUCKET, extOf, genericJobs, storeJobs } from '../lib/upload'
 import { pdfPages, askUntilOpen } from '../lib/pdf'
-import OtpLogin from '../components/OtpLogin'
-import CodeLogin from '../components/CodeLogin'
+import LoginScreen from '../components/LoginScreen'
 import Redact from '../components/Redact'
 import Scanner from '../components/Scanner'
 import Summary from '../components/Summary'
@@ -18,6 +17,17 @@ import Versions from '../components/Versions'
 import { DS, docStatus, catStatus, chainOf } from '../lib/status'
 import { usePhotoUrls } from '../lib/photos'
 
+// progress ring (n of total)
+function Ring({ n, total }) {
+  const p = total ? n / total : 0, R = 30, C2 = 2 * Math.PI * R
+  return (
+    <div className="ring" role="img" aria-label={'ส่งแล้ว ' + n + ' จาก ' + total}>
+      <svg width="76" height="76" viewBox="0 0 76 76"><circle cx="38" cy="38" r={R} fill="none" stroke="var(--line)" strokeWidth="6" />
+        <circle cx="38" cy="38" r={R} fill="none" stroke="var(--pri)" strokeWidth="6" strokeLinecap="round" strokeDasharray={C2} strokeDashoffset={C2 * (1 - p)} transform="rotate(-90 38 38)" /></svg>
+      <span><b>{n}</b>/{total}</span>
+    </div>
+  )
+}
 // asks for the password of a locked PDF; the file is unlocked in this browser, the password is never sent or stored
 function PwAsk({ file, wrong, onDone }) {
   const [v, setV] = useState(''), [show, setShow] = useState(false)
@@ -57,6 +67,7 @@ export default function Home() {
   const [busy, setBusy] = useState('')
   const [ov, setOv] = useState(null)
   const [tab, setTab] = useState('up')
+  const [openCat, setOpenCat] = useState(null)   // which document row is expanded
   const [idMode, setIdMode] = useState('self')   // ID card: 'self' = I already redacted it / nothing to redact, 'tool' = redact with the tool
   const [idOk, setIdOk] = useState(false)
   const [pwAsk, setPwAsk] = useState(null)       // { file, wrong, res } while a locked PDF waits for its password
@@ -94,15 +105,7 @@ export default function Home() {
 
   if (ses === undefined) return null
   if (!ses)
-    return (
-      <Shell>
-        <div className="panel"><b style={{ fontSize: 18 }}>ยินดีต้อนรับ</b>
-          <div className="hint">กรอกอีเมลที่ได้รับเชิญ เราจะส่งรหัส OTP ให้ แล้วอัปโหลดเอกสารได้ทันที ไม่ต้องส่งครบในครั้งเดียว ทยอยส่งเท่าที่มีได้</div></div>
-        <OtpLogin title="เข้าสู่ระบบด้วยอีเมลที่ได้รับเชิญ" />
-        <CodeLogin mode="candidate" />
-        <p style={{ textAlign: 'center', marginTop: 36 }}><a className="mute" href="/staff">สำหรับเจ้าหน้าที่</a></p>
-      </Shell>
-    )
+    return <LoginScreen role="candidate" />
   const out = <button className="btn sm" onClick={() => supabase.auth.signOut()}>ออกจากระบบ</button>
   if (c === undefined) return <Shell right={out}>กำลังโหลด...</Shell>
   if (c === null) return <Shell right={out}><div className="panel">อีเมลนี้ยังไม่ได้รับเชิญ กรุณาติดต่อ Recruiter</div></Shell>
@@ -227,67 +230,17 @@ export default function Home() {
 
   const r = reqd(c), n = r.filter((k) => okCat(docs, c, k)).length
   const miss = r.filter((k) => !okCat(docs, c, k))
-  return (
-    <Shell right={out}>
-      <Stepper c={c} docs={docs} />
-      <div className="panel">
-        <div className="bar"><i style={{ width: (r.length ? (n / r.length) * 100 : 0) + '%' }} /></div>
-        <div className="sub">ส่งแล้ว {n} จาก {r.length} หมวดที่จำเป็น · ทยอยอัปโหลดได้ ไฟล์ที่ส่งแล้วถูกบันทึกไว้</div>
-        {miss.length > 0 && <div className="err">ยังขาดเอกสารบังคับ: {miss.map(lbl).join(' · ')}</div>}
-      </div>
-      <div className="panel">
-        {!pf ? (
-          <div className="row" style={{ cursor: 'default' }}>
-            <Avatar url={photos[c.id]} name={c.first_name + ' ' + c.last_name} size={64} portrait />
-            <div style={{ flex: 1 }}><b>{c.first_name} {c.last_name}</b><div className="hint">{c.position} · SRF {c.srf_no} · {sexTh(c)}{c.name_changed ? ' · เคยเปลี่ยนชื่อ/นามสกุล' : ''}</div></div>
-            <button className="btn sm" onClick={() => setPf({ fn: c.first_name, ln: c.last_name, male: c.is_male, nc: c.name_changed })}>แก้ไขข้อมูลของฉัน</button>
-          </div>
-        ) : (
-          <>
-            <b>แก้ไขข้อมูลของฉัน</b>
-            <div className="hint">ชื่อไฟล์ทั้งหมดและรายการเอกสารที่ต้องส่งจะปรับตามข้อมูลใหม่อัตโนมัติ</div>
-            <label className="f">ชื่อ (ภาษาอังกฤษ)<input type="text" value={pf.fn} onChange={(e) => setPf({ ...pf, fn: e.target.value })} /></label>
-            <label className="f">นามสกุล (ภาษาอังกฤษ)<input type="text" value={pf.ln} onChange={(e) => setPf({ ...pf, ln: e.target.value })} /></label>
-            <label className="f ink"><input type="checkbox" checked={pf.male} onChange={(e) => setPf({ ...pf, male: e.target.checked })} /> เพศชาย (ต้องส่งเอกสารทหาร · ไม่ติ๊กระบบจะบันทึกเป็นเพศหญิง)</label>
-            <label className="f ink"><input type="checkbox" checked={pf.nc} onChange={(e) => setPf({ ...pf, nc: e.target.checked })} /> เคยเปลี่ยนชื่อหรือนามสกุล</label>
-            <div className="ctl"><button className="btn pri" onClick={saveProfile}>บันทึก</button><button className="btn" onClick={() => { setPf(null); setErr({}) }}>ยกเลิก</button></div>
-            {err.pf && <div className="err">{err.pf}</div>}
-          </>
-        )}
-      </div>
-      <div className="panel guide">
-        <Fold title="วิธีใช้งานและเอกสารที่ต้องเตรียม" defaultOpen={!docs.length}>
-          <ol>
-            <li>เตรียมไฟล์ PDF, JPG หรือ PNG ขนาดไม่เกิน 10 MB ต่อไฟล์ ถ้าไม่มีไฟล์ ให้กด "📷 ถ่ายรูป / สแกนเอกสาร" ในแต่ละหมวด ระบบตัดขอบและรวมเป็น PDF ให้</li>
-            <li>อัปโหลดทีละหมวดด้านล่าง หรือใช้กล่อง "อัปโหลดหลายไฟล์พร้อมกัน" ระบบจะเดาหมวดให้และให้ตรวจก่อนยืนยัน</li>
-            <li>ทยอยส่งได้ ไม่ต้องส่งครบในครั้งเดียว ไฟล์ที่ส่งแล้วถูกบันทึกไว้</li>
-            <li>ดูสถานะที่แต่ละไฟล์ เมื่อ HR ขอให้แก้ไข ให้อ่านเหตุผล แล้วกด "อัปโหลดฉบับแก้ไข" ไฟล์เก่าจะเก็บไว้ในประวัติ</li>
-          </ol>
-          <div className="leg">
-            {Object.keys(DS).map((k) => <span key={k}><span className={'tag ' + DS[k][2]}>{DS[k][0]}</span> {DS[k][1]}</span>)}
-          </div>
-          <div className="scroll"><table className="tbl">
-            <thead><tr><th>เอกสารที่ต้องเตรียม</th><th>ประเภท</th><th>หมายเหตุ</th></tr></thead>
-            <tbody>{req(c).map((k) => (
-              <tr key={k[0]}>
-                <td>{nm(k[0])}{k[1]}<div className="hint">{k[2]}</div></td>
-                <td>{k[5] ? <span className="tag n">ไม่บังคับ</span> : <span className="tag">บังคับ</span>}</td>
-                <td className="mute">{[k[3], k[0] === '2.2' && 'เพราะคุณเคยเปลี่ยนชื่อหรือนามสกุล', k[0] === '2.5' && 'เพราะเป็นเพศชาย'].filter(Boolean).join(' · ')}</td>
-              </tr>
-            ))}</tbody>
-          </table></div>
-        </Fold>
-      </div>
-      <div className="ctl" style={{ marginBottom: 12 }}>
-        <button className={'btn' + (tab === 'up' ? ' pri' : '')} onClick={() => setTab('up')}>อัปโหลดเอกสาร</button>
-        <button className={'btn' + (tab === 'sum' ? ' pri' : '')} onClick={() => setTab('sum')}>สรุปเอกสาร / สถานะ</button>
-      </div>
-      {tab !== 'sum' && <BulkUpload cats={req(c)} existing={Object.fromEntries(req(c).map((k) => [k[0], docs.filter((d) => d.category === k[0]).length]))} onConfirm={bulk} busy={!!busy} />}
-      {tab === 'sum' ? <Summary c={c} docs={docs} photo={photos[c.id]} /> : req(c).map((k) => {
-        const l = docs.filter((d) => d.category === k[0]), ok = okCat(docs, c, k)
-        return (
-          <section className={'panel cat' + (ok ? ' done' : '')} key={k[0]}>
-            <b>{nm(k[0])}{k[1]}</b> <span className="sub">({k[2]})</span> {k[5] && <span className="tag n">ไม่บังคับ</span>} {(!k[5] || l.length > 0) && <span className={'tag ' + DS[catStatus(l)][2]}>{DS[catStatus(l)][0]}</span>}
+  const fixD = docs.filter((d) => d.status === 'fix')
+  const next = fixD.length ? { k: C[fixD[0].category], fix: true, why: fixD[0].note || 'HR ขอให้อัปโหลดฉบับแก้ไข' } : miss.length ? { k: miss[0], fix: false, why: miss[0][3] } : null
+  const goCat = (code) => { setTab('up'); setOpenCat(code); setTimeout(() => document.getElementById('cat-' + code)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60) }
+  const allCats = req(c)
+  const rowOf = (k) => { const l = docs.filter((d) => d.category === k[0]); return { k, l, s: catStatus(l) } }
+  const grp = ({ k, s }) => (s === 'revision' || (s === 'missing' && !k[5]) ? 'todo' : s === 'missing' ? 'opt' : s === 'verified' ? 'done' : 'wait')
+  const rows = allCats.map(rowOf)
+  const GROUPS = [['todo', 'ต้องทำ', 'ส่งเอกสารเหล่านี้ให้ครบ'], ['wait', 'รอ HR ตรวจ', 'ส่งแล้ว ไม่ต้องทำอะไรเพิ่ม'], ['done', 'เรียบร้อย', 'ตรวจผ่านแล้ว'], ['opt', 'ส่งเพิ่มได้ (ไม่บังคับ)', 'ถ้ามีเท่านั้น']]
+  const actionTxt = (x) => (x.s === 'revision' ? 'ต้องแก้ไข' : x.s === 'missing' ? (x.k[5] ? 'เพิ่ม' : 'อัปโหลด') : x.s === 'verified' ? 'ตรวจผ่าน' : 'รอตรวจ')
+  const catBody = (k, l) => (
+    <>
             {k[3] && <div className="hint">{k[3]}</div>}
             {k[0] === 'PH' && <div className="hint">ขนาด 700×900 px · JPG · 300 KB–2 MB · พื้นหลังสีขาวหรือเทาอ่อน · <a href="/photo-spec.jpg" target="_blank" rel="noreferrer">ดูข้อกำหนดรูปถ่ายพนักงาน</a></div>}
             {k[0] === '2.1' && (
@@ -348,9 +301,115 @@ export default function Home() {
               <div className="hint">{k[0] === 'PH' ? 'ไม่มีไฟล์รูปถ่าย? ถ่ายจากกล้องได้เลย ระบบจะตัดเป็น 700×900 ให้' : 'ไม่มีไฟล์? ถ่ายรูปหรือสแกนด้วยมือถือได้เลย ระบบตัดขอบ ปรับให้คมชัด และรวมหลายหน้าเป็น PDF ให้'}</div>
             </div>
             {err[k[0]] && <div className="err">{err[k[0]]}</div>}
-          </section>
-        )
-      })}
+    </>
+  )
+  return (
+    <Shell right={out}>
+      <section className="hero">
+        <div className="hero-top">
+          <div style={{ minWidth: 0 }}>
+            <div className="eyebrow">เอกสารสำหรับเริ่มงาน · SRF {c.srf_no}</div>
+            <h1 className="hello">สวัสดี {c.first_name || 'คุณ'}</h1>
+            <div className="sub">{c.position}</div>
+          </div>
+          <Ring n={n} total={r.length} />
+        </div>
+        {next ? (
+          <div className={'next' + (next.fix ? ' fix' : '')}>
+            <div className="eyebrow">{next.fix ? 'HR ขอให้แก้ไข' : 'ขั้นตอนถัดไป'}</div>
+            <div className="nx">{nm(next.k[0])}{next.k[1]} <span className="sub">({next.k[2]})</span></div>
+            {next.why && <div className="hint">{next.fix ? 'เหตุผล: ' : ''}{next.why}</div>}
+            <div className="ctl"><button type="button" className="btn pri" onClick={() => goCat(next.k[0])}>{next.fix ? 'แก้ไขตอนนี้' : 'เริ่มเลย'}</button>
+              {(miss.length + fixD.length) > 1 && <span className="sub">แล้วยังเหลืออีก {miss.length + fixD.length - 1} รายการ</span>}</div>
+          </div>
+        ) : (
+          <div className="next okk"><div className="nx">ส่งเอกสารครบแล้ว ขอบคุณค่ะ/ครับ</div><div className="hint">{rows.every((x) => x.s === 'verified' || x.s === 'missing') ? 'HR ตรวจผ่านครบแล้ว' : 'HR กำลังตรวจสอบ ถ้ามีอะไรต้องแก้ไข จะแจ้งที่หน้านี้'}</div></div>
+        )}
+      </section>
+      <div className="seg" role="tablist">
+        <button type="button" role="tab" aria-selected={tab !== 'sum'} className={tab !== 'sum' ? 'on' : ''} onClick={() => setTab('up')}>เอกสารของฉัน</button>
+        <button type="button" role="tab" aria-selected={tab === 'sum'} className={tab === 'sum' ? 'on' : ''} onClick={() => setTab('sum')}>สถานะและสรุป</button>
+      </div>
+      {tab === 'sum' ? (
+        <>
+          <Stepper c={c} docs={docs} />
+          <Summary c={c} docs={docs} photo={photos[c.id]} />
+        </>
+      ) : (
+        <>
+          {GROUPS.map(([g, title, sub]) => {
+            const list = rows.filter((x) => grp(x) === g)
+            if (!list.length) return null
+            return (
+              <section className="tgroup" key={g}>
+                <div className="tgh"><b>{title}</b><span className="n">{list.length}</span><span className="sub">{sub}</span></div>
+                {list.map((x) => {
+                  const k = x.k, open = openCat === k[0]
+                  return (
+                    <div className={'tcat ' + x.s + (open ? ' open' : '')} id={'cat-' + k[0]} key={k[0]}>
+                      <button type="button" className="tr" aria-expanded={open} onClick={() => setOpenCat(open ? null : k[0])}>
+                        <span className="dotc" aria-hidden="true">{x.s === 'verified' ? '✓' : x.s === 'revision' ? '!' : x.s === 'missing' ? '' : '…'}</span>
+                        <span className="tt"><b>{nm(k[0])}{k[1]}</b><span className="sub">{k[2]}{x.l.length > 1 ? ' · ' + x.l.length + ' ไฟล์' : ''}</span></span>
+                        <span className="tact">{actionTxt(x)}</span>
+                        <span className="chev2" aria-hidden="true">{open ? '⌃' : '⌄'}</span>
+                      </button>
+                      {open && <div className="tb">{catBody(k, x.l)}</div>}
+                    </div>
+                  )
+                })}
+              </section>
+            )
+          })}
+          <div className="quiet">
+            <Fold title="อัปโหลดหลายไฟล์พร้อมกัน (ระบบช่วยจัดหมวดให้)">
+              <BulkUpload cats={allCats} existing={Object.fromEntries(allCats.map((k) => [k[0], docs.filter((d) => d.category === k[0]).length]))} onConfirm={bulk} busy={!!busy} />
+            </Fold>
+      <div className="panel flat">
+        {!pf ? (
+          <div className="row" style={{ cursor: 'default' }}>
+            <Avatar url={photos[c.id]} name={c.first_name + ' ' + c.last_name} size={64} portrait />
+            <div style={{ flex: 1 }}><b>{c.first_name} {c.last_name}</b><div className="hint">{c.position} · SRF {c.srf_no} · {sexTh(c)}{c.name_changed ? ' · เคยเปลี่ยนชื่อ/นามสกุล' : ''}</div></div>
+            <button className="btn sm" onClick={() => setPf({ fn: c.first_name, ln: c.last_name, male: c.is_male, nc: c.name_changed })}>แก้ไขข้อมูลของฉัน</button>
+          </div>
+        ) : (
+          <>
+            <b>แก้ไขข้อมูลของฉัน</b>
+            <div className="hint">ชื่อไฟล์ทั้งหมดและรายการเอกสารที่ต้องส่งจะปรับตามข้อมูลใหม่อัตโนมัติ</div>
+            <label className="f">ชื่อ (ภาษาอังกฤษ)<input type="text" value={pf.fn} onChange={(e) => setPf({ ...pf, fn: e.target.value })} /></label>
+            <label className="f">นามสกุล (ภาษาอังกฤษ)<input type="text" value={pf.ln} onChange={(e) => setPf({ ...pf, ln: e.target.value })} /></label>
+            <label className="f ink"><input type="checkbox" checked={pf.male} onChange={(e) => setPf({ ...pf, male: e.target.checked })} /> เพศชาย (ต้องส่งเอกสารทหาร · ไม่ติ๊กระบบจะบันทึกเป็นเพศหญิง)</label>
+            <label className="f ink"><input type="checkbox" checked={pf.nc} onChange={(e) => setPf({ ...pf, nc: e.target.checked })} /> เคยเปลี่ยนชื่อหรือนามสกุล</label>
+            <div className="ctl"><button className="btn pri" onClick={saveProfile}>บันทึก</button><button className="btn" onClick={() => { setPf(null); setErr({}) }}>ยกเลิก</button></div>
+            {err.pf && <div className="err">{err.pf}</div>}
+          </>
+        )}
+      </div>
+      <div className="guide">
+        <Fold title="วิธีใช้งานและเอกสารที่ต้องเตรียม" defaultOpen={!docs.length}>
+          <ol>
+            <li>เตรียมไฟล์ PDF, JPG หรือ PNG ขนาดไม่เกิน 10 MB ต่อไฟล์ ถ้าไม่มีไฟล์ ให้กด "📷 ถ่ายรูป / สแกนเอกสาร" ในแต่ละหมวด ระบบตัดขอบและรวมเป็น PDF ให้</li>
+            <li>อัปโหลดทีละหมวดด้านล่าง หรือใช้กล่อง "อัปโหลดหลายไฟล์พร้อมกัน" ระบบจะเดาหมวดให้และให้ตรวจก่อนยืนยัน</li>
+            <li>ทยอยส่งได้ ไม่ต้องส่งครบในครั้งเดียว ไฟล์ที่ส่งแล้วถูกบันทึกไว้</li>
+            <li>ดูสถานะที่แต่ละไฟล์ เมื่อ HR ขอให้แก้ไข ให้อ่านเหตุผล แล้วกด "อัปโหลดฉบับแก้ไข" ไฟล์เก่าจะเก็บไว้ในประวัติ</li>
+          </ol>
+          <div className="leg">
+            {Object.keys(DS).map((k) => <span key={k}><span className={'tag ' + DS[k][2]}>{DS[k][0]}</span> {DS[k][1]}</span>)}
+          </div>
+          <div className="scroll"><table className="tbl">
+            <thead><tr><th>เอกสารที่ต้องเตรียม</th><th>ประเภท</th><th>หมายเหตุ</th></tr></thead>
+            <tbody>{req(c).map((k) => (
+              <tr key={k[0]}>
+                <td>{nm(k[0])}{k[1]}<div className="hint">{k[2]}</div></td>
+                <td>{k[5] ? <span className="tag n">ไม่บังคับ</span> : <span className="tag">บังคับ</span>}</td>
+                <td className="mute">{[k[3], k[0] === '2.2' && 'เพราะคุณเคยเปลี่ยนชื่อหรือนามสกุล', k[0] === '2.5' && 'เพราะเป็นเพศชาย'].filter(Boolean).join(' · ')}</td>
+              </tr>
+            ))}</tbody>
+          </table></div>
+        </Fold>
+      </div>
+          </div>
+        </>
+      )}
       {pwAsk && <PwAsk file={pwAsk.file} wrong={pwAsk.wrong} onDone={(v) => { pwAsk.res(v); setPwAsk(null) }} />}
       {scan && <Scanner onDone={scanDone} onCancel={() => setScan(null)} />}
       {ov && <Redact pages={ov.pages} onCancel={() => { ov.res(null); setOv(null) }} onSave={(rr) => { ov.res(rr); setOv(null) }} />}

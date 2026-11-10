@@ -7,8 +7,7 @@ import { parseAou, parseRehire } from '../../lib/classify'
 import { DS, docStatus, chainOf } from '../../lib/status'
 import { buildRows, filterRows } from '../../lib/rows'
 import { eligible, addFiles, zipName, saveBlob, JSZip } from '../../lib/zipper'
-import OtpLogin from '../../components/OtpLogin'
-import CodeLogin from '../../components/CodeLogin'
+import LoginScreen from '../../components/LoginScreen'
 import Summary from '../../components/Summary'
 import Stepper from '../../components/Stepper'
 import BulkUpload from '../../components/BulkUpload'
@@ -18,6 +17,7 @@ import Fold from '../../components/Fold'
 import Versions from '../../components/Versions'
 import SearchFilter from '../../components/SearchFilter'
 import ReviewCenter from '../../components/ReviewCenter'
+import { purgeDocs } from '../../lib/purge'
 import PdfChecker from '../../components/PdfChecker'
 import BulkDownload from '../../components/BulkDownload'
 import Reports from '../../components/Reports'
@@ -109,7 +109,7 @@ export default function Staff() {
 
   const out = ses ? <button className="btn sm" onClick={() => supabase.auth.signOut()}>ออกจากระบบ</button> : null
   if (ses === undefined) return null
-  if (!ses) return <Shell><OtpLogin title="สำหรับเจ้าหน้าที่ HR" /><CodeLogin /></Shell>
+  if (!ses) return <LoginScreen role="staff" />
   if (role === null) return <Shell right={out}>กำลังโหลด...</Shell>
   if (role !== 'admin' && role !== 'recruiter')
     return <Shell right={out}><div className="panel">{role === 'hiring' ? <>บัญชีนี้เป็นทีม Hiring · ไปที่ <a href="/hiring">หน้ารับเอกสารของ Hiring</a></> : 'อีเมลนี้ยังไม่มีสิทธิ์ใช้งานหน้านี้'}</div></Shell>
@@ -153,11 +153,36 @@ export default function Staff() {
     const { data } = await supabase.storage.from(BUCKET).createSignedUrl(d.storage_path, 60)
     if (data) window.open(data.signedUrl, '_blank')
   }
+  // log line for the review history (text only, survives deleting the file)
+  const logEv = (d, action, text) => supabase.from('document_events').insert({ document_id: d.id, candidate_id: d.candidate_id, category: d.category, action, comment: text, visible: false, actor_role: 'recruiter', actor_email: ses.user.email, file_name: d.original_name, rev: d.rev })
+  // delete = the file in Storage AND its row in the documents table (deleting only in the Supabase Storage screen leaves the row behind)
   async function delDoc(d) {
-    if (!confirm('ลบไฟล์นี้ (รวมประวัติเวอร์ชันเก่าของไฟล์นี้)?')) return
     const ch = chainOf(d, hist)
+    if (!confirm('ลบไฟล์นี้ออกจากระบบถาวร?\n' + d.original_name + (ch.length > 1 ? '\n(รวมฉบับเก่าอีก ' + (ch.length - 1) + ' ฉบับ)' : '') + '\n\nลบแล้วกู้คืนไม่ได้ แคนดิเดตต้องอัปโหลดใหม่')) return
+    await logEv(d, 'delete', 'ลบไฟล์โดย recruiter')
     await supabase.storage.from(BUCKET).remove(ch.map((x) => x.storage_path))
-    await supabase.from('documents').delete().in('id', ch.map((x) => x.id)); load()
+    const { error } = await supabase.from('documents').delete().in('id', ch.map((x) => x.id))
+    setMsg(error ? error.message : 'ลบไฟล์แล้ว'); load()
+  }
+  // saved from the viewer (turned / re-ordered pages): new file in Storage, same document row, old file removed
+  async function saveEdit(d, blob, ext) {
+    const path = d.candidate_id + '/' + d.category + '/' + crypto.randomUUID() + '.' + ext
+    const up = await supabase.storage.from(BUCKET).upload(path, blob, { contentType: ext === 'pdf' ? 'application/pdf' : 'image/jpeg' })
+    if (up.error) { setMsg(up.error.message); return false }
+    const reset = d.status === 'ok' ? { status: 'wait', note: '', ...(d.category === '2.1' ? { redaction_checked_at: null, redaction_checked_by: null } : {}) } : {}
+    const { error } = await supabase.from('documents').update({ storage_path: path, ext, size_kb: Math.max(1, Math.ceil(blob.size / 1024)), ...reset }).eq('id', d.id)
+    if (error) { await supabase.storage.from(BUCKET).remove([path]); setMsg(error.message); return false }
+    await supabase.storage.from(BUCKET).remove([d.storage_path])
+    await logEv(d, 'edit', 'แก้ไฟล์ (หมุน/จัดหน้า) แล้วบันทึกทับ' + (d.status === 'ok' ? ' · สถานะกลับเป็นรอตรวจ' : ''))
+    setMsg('บันทึกไฟล์ที่แก้แล้ว'); load(); return true
+  }
+  // all documents of this candidate (files + rows); the candidate stays on the list
+  async function purge(c) {
+    const n = [...docs, ...hist].filter((d) => d.candidate_id === c.id).length
+    if (!n) { setMsg('แคนดิเดตคนนี้ไม่มีเอกสารให้ลบ'); return }
+    if (!confirm('ลบเอกสารทั้งหมดของ ' + (c.first_name ? base(c) : c.email) + ' (' + n + ' ไฟล์รวมฉบับเก่า) ออกจากระบบถาวร?\n\nใช้เมื่อโหลดไปเก็บที่อื่นแล้ว ลบแล้วกู้คืนไม่ได้ รายชื่อแคนดิเดตยังอยู่')) return
+    try { const r = await purgeDocs(c.id); setMsg('ลบเอกสารทั้งหมดแล้ว (' + r.files + ' ไฟล์)') } catch (e) { setMsg(e.message) }
+    load()
   }
   async function delCand(c) {
     if (!confirm('ลบแคนดิเดตและไฟล์ทั้งหมด? ย้อนกลับไม่ได้')) return
@@ -248,7 +273,7 @@ export default function Staff() {
           {msg && <div className="err" style={{ marginBottom: 10 }}>{msg}</div>}
           <h1 className="pgt">{TITLE[pg]}</h1>
 
-          {pg === 'dash' && <Dashboard rows={info} photos={photos} onOpen={openCand} onZip={zip} />}
+          {pg === 'dash' && <Dashboard rows={info} photos={photos} onOpen={openCand} onReview={(c) => { setPg('review'); setRv(c.id) }} onZip={zip} />}
 
           {pg === 'add' && (
             <form className="panel" onSubmit={add}>
@@ -275,7 +300,7 @@ export default function Staff() {
 
           {pg === 'review' && (rvRow ? (
             <ReviewCenter c={rvRow.c} m={rvRow.m} hist={hist.filter((h) => h.candidate_id === rvRow.c.id)} events={evs.filter((e) => e.candidate_id === rvRow.c.id)}
-              photo={photos[rvRow.c.id]} onBack={() => setRv(null)} onReview={review} onComment={comment} onOpened={opened} />
+              photo={photos[rvRow.c.id]} onBack={() => setRv(null)} onReview={review} onComment={comment} onOpened={opened} onDelete={delDoc} onSaveEdit={saveEdit} />
           ) : (
             <>
               <div className="hint" style={{ marginBottom: 10 }}>เลือกแคนดิเดตเพื่อดูเอกสารทั้งหมดในหน้าจอเดียว พร้อม Approve / Request Revision / Comment และประวัติการตรวจสอบ</div>
@@ -369,6 +394,7 @@ export default function Staff() {
                         <div className="ctl" style={{ marginTop: 12 }}>
                           <button className="btn pri" onClick={() => { setPg('review'); setRv(c.id) }}>เปิด Review Center</button>
                           <button className="btn" onClick={() => zip(c)}>โหลด Zip (Verified)</button>
+                          <button className="btn" onClick={() => purge(c)}>🗑 ลบเอกสารทั้งหมดของคนนี้</button>
                           <button className={'btn' + (c.offer_made ? '' : ' pri')} onClick={() => setOffer(c, !c.offer_made)}>{c.offer_made ? 'ยกเลิกการส่งให้ Hiring' : 'ส่งให้ Hiring รับเอกสาร'}</button>
                           <button className="btn" onClick={() => delCand(c)}>ลบแคนดิเดต</button>
                         </div>
